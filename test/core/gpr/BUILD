@@ -29,18 +29,8 @@ grpc_cc_test(
 )
 
 grpc_cc_test(
-    name = "avl_test",
-    srcs = ["avl_test.cc"],
-    language = "C++",
-    deps = [
-        "//:gpr",
-        "//test/core/util:gpr_test_util",
-    ],
-)
-
-grpc_cc_test(
-    name = "cmdline_test",
-    srcs = ["cmdline_test.cc"],
+    name = "arena_test",
+    srcs = ["arena_test.cc"],
     language = "C++",
     deps = [
         "//:gpr",
@@ -96,6 +86,7 @@ grpc_cc_test(
         "//:gpr",
         "//test/core/util:gpr_test_util",
     ],
+    data = ["//third_party/toolchains:RBE_USE_MACHINE_TYPE_LARGE"],
 )
 
 grpc_cc_test(
@@ -131,16 +122,6 @@ grpc_cc_test(
 grpc_cc_test(
     name = "sync_test",
     srcs = ["sync_test.cc"],
-    language = "C++",
-    deps = [
-        "//:gpr",
-        "//test/core/util:gpr_test_util",
-    ],
-)
-
-grpc_cc_test(
-    name = "thd_test",
-    srcs = ["thd_test.cc"],
     language = "C++",
     deps = [
         "//:gpr",

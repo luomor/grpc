@@ -49,7 +49,7 @@ class GuardValidator(object):
         self.failed = False
 
     def fail(self, fpath, regexp, fcontents, match_txt, correct, fix):
-        cpp_header = 'grpc++' in fpath
+        cpp_header = 'grpc++' in fpath or 'grpcpp' in fpath
         self.failed = True
         invalid_guards_msg_template = (
             '{0}: Missing preprocessor guards (RE {1}). '
@@ -78,7 +78,7 @@ class GuardValidator(object):
         return fcontents
 
     def check(self, fpath, fix):
-        cpp_header = 'grpc++' in fpath
+        cpp_header = 'grpc++' in fpath or 'grpcpp' in fpath
         valid_guard = build_valid_guard(fpath)
 
         fcontents = load(fpath)
@@ -156,7 +156,13 @@ argp.add_argument('--precommit', default=False, action='store_true')
 args = argp.parse_args()
 
 KNOWN_BAD = set([
+    'src/core/ext/filters/client_channel/health/health.pb.h',
     'src/core/ext/filters/client_channel/lb_policy/grpclb/proto/grpc/lb/v1/load_balancer.pb.h',
+    'src/core/ext/filters/client_channel/lb_policy/grpclb/proto/grpc/lb/v1/google/protobuf/duration.pb.h',
+    'src/core/ext/filters/client_channel/lb_policy/grpclb/proto/grpc/lb/v1/google/protobuf/timestamp.pb.h',
+    'src/core/tsi/alts/handshaker/altscontext.pb.h',
+    'src/core/tsi/alts/handshaker/handshaker.pb.h',
+    'src/core/tsi/alts/handshaker/transport_security_common.pb.h',
     'include/grpc++/ext/reflection.grpc.pb.h',
     'include/grpc++/ext/reflection.pb.h',
 ])

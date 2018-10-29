@@ -78,7 +78,8 @@ static void must_fail(void* arg, grpc_error* error) {
 
 void test_succeeds(void) {
   grpc_resolved_address resolved_addr;
-  struct sockaddr_in* addr = (struct sockaddr_in*)resolved_addr.addr;
+  struct sockaddr_in* addr =
+      reinterpret_cast<struct sockaddr_in*>(resolved_addr.addr);
   int svr_fd;
   int r;
   int connections_complete_before;
@@ -88,7 +89,7 @@ void test_succeeds(void) {
   gpr_log(GPR_DEBUG, "test_succeeds");
 
   memset(&resolved_addr, 0, sizeof(resolved_addr));
-  resolved_addr.len = sizeof(struct sockaddr_in);
+  resolved_addr.len = static_cast<socklen_t>(sizeof(struct sockaddr_in));
   addr->sin_family = AF_INET;
 
   /* create a dummy server */
@@ -111,8 +112,9 @@ void test_succeeds(void) {
 
   /* await the connection */
   do {
-    resolved_addr.len = sizeof(addr);
-    r = accept(svr_fd, (struct sockaddr*)addr, (socklen_t*)&resolved_addr.len);
+    resolved_addr.len = static_cast<socklen_t>(sizeof(addr));
+    r = accept(svr_fd, reinterpret_cast<struct sockaddr*>(addr),
+               reinterpret_cast<socklen_t*>(&resolved_addr.len));
   } while (r == -1 && errno == EINTR);
   GPR_ASSERT(r >= 0);
   close(r);
@@ -136,7 +138,8 @@ void test_succeeds(void) {
 
 void test_fails(void) {
   grpc_resolved_address resolved_addr;
-  struct sockaddr_in* addr = (struct sockaddr_in*)resolved_addr.addr;
+  struct sockaddr_in* addr =
+      reinterpret_cast<struct sockaddr_in*>(resolved_addr.addr);
   int connections_complete_before;
   grpc_closure done;
   grpc_core::ExecCtx exec_ctx;
@@ -144,7 +147,7 @@ void test_fails(void) {
   gpr_log(GPR_DEBUG, "test_fails");
 
   memset(&resolved_addr, 0, sizeof(resolved_addr));
-  resolved_addr.len = sizeof(struct sockaddr_in);
+  resolved_addr.len = static_cast<socklen_t>(sizeof(struct sockaddr_in));
   addr->sin_family = AF_INET;
 
   gpr_mu_lock(g_mu);
@@ -167,7 +170,7 @@ void test_fails(void) {
         break;
       case GRPC_TIMERS_NOT_CHECKED:
         polling_deadline = 0;
-      /* fall through */
+      // fallthrough
       case GRPC_TIMERS_CHECKED_AND_EMPTY:
         GPR_ASSERT(GRPC_LOG_IF_ERROR(
             "pollset_work",

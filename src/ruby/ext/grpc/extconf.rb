@@ -15,31 +15,6 @@
 require 'etc'
 require 'mkmf'
 
-LIBDIR = RbConfig::CONFIG['libdir']
-INCLUDEDIR = RbConfig::CONFIG['includedir']
-
-HEADER_DIRS = [
-  # Search /opt/local (Mac source install)
-  '/opt/local/include',
-
-  # Search /usr/local (Source install)
-  '/usr/local/include',
-
-  # Check the ruby install locations
-  INCLUDEDIR
-]
-
-LIB_DIRS = [
-  # Search /opt/local (Mac source install)
-  '/opt/local/lib',
-
-  # Search /usr/local (Source install)
-  '/usr/local/lib',
-
-  # Check the ruby install locations
-  LIBDIR
-]
-
 windows = RUBY_PLATFORM =~ /mingw|mswin/
 bsd = RUBY_PLATFORM =~ /bsd/
 
@@ -84,7 +59,7 @@ if grpc_config == 'gcov'
 end
 
 if grpc_config == 'dbg'
-  $CFLAGS << ' -O0'
+  $CFLAGS << ' -O0 -ggdb3'
 end
 
 $LDFLAGS << ' -Wl,-wrap,memcpy' if RUBY_PLATFORM =~ /linux/
@@ -94,7 +69,6 @@ $CFLAGS << ' -std=c99 '
 $CFLAGS << ' -Wall '
 $CFLAGS << ' -Wextra '
 $CFLAGS << ' -pedantic '
-$CFLAGS << ' -Wno-format '
 
 output = File.join('grpc', 'grpc_c')
 puts 'Generating Makefile for ' + output
@@ -111,7 +85,7 @@ if grpc_config == 'opt'
       o.puts i
     end
     o.puts
-    o.puts 'strip:'
+    o.puts 'strip: $(DLLIB)'
     o.puts "\t$(ECHO) Stripping $(DLLIB)"
     o.puts "\t$(Q) #{strip_tool} $(DLLIB)"
   end

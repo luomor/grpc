@@ -19,21 +19,20 @@
 #include <mutex>
 #include <thread>
 
-#include <grpc++/channel.h>
-#include <grpc++/client_context.h>
-#include <grpc++/create_channel.h>
-#include <grpc++/resource_quota.h>
-#include <grpc++/security/auth_metadata_processor.h>
-#include <grpc++/security/credentials.h>
-#include <grpc++/security/server_credentials.h>
-#include <grpc++/server.h>
-#include <grpc++/server_builder.h>
-#include <grpc++/server_context.h>
 #include <grpc/grpc.h>
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
-#include <grpc/support/thd.h>
 #include <grpc/support/time.h>
+#include <grpcpp/channel.h>
+#include <grpcpp/client_context.h>
+#include <grpcpp/create_channel.h>
+#include <grpcpp/resource_quota.h>
+#include <grpcpp/security/auth_metadata_processor.h>
+#include <grpcpp/security/credentials.h>
+#include <grpcpp/security/server_credentials.h>
+#include <grpcpp/server.h>
+#include <grpcpp/server_builder.h>
+#include <grpcpp/server_context.h>
 
 #include "src/core/lib/gpr/env.h"
 #include "src/core/lib/security/credentials/credentials.h"
@@ -72,8 +71,8 @@ class TestMetadataCredentialsPlugin : public MetadataCredentialsPlugin {
   static const char kGoodMetadataKey[];
   static const char kBadMetadataKey[];
 
-  TestMetadataCredentialsPlugin(grpc::string_ref metadata_key,
-                                grpc::string_ref metadata_value,
+  TestMetadataCredentialsPlugin(const grpc::string_ref& metadata_key,
+                                const grpc::string_ref& metadata_value,
                                 bool is_blocking, bool is_successful)
       : metadata_key_(metadata_key.data(), metadata_key.length()),
         metadata_value_(metadata_value.data(), metadata_value.length()),
@@ -169,7 +168,7 @@ const char TestAuthMetadataProcessor::kIdentityPropName[] = "novel identity";
 
 class Proxy : public ::grpc::testing::EchoTestService::Service {
  public:
-  Proxy(std::shared_ptr<Channel> channel)
+  Proxy(const std::shared_ptr<Channel>& channel)
       : stub_(grpc::testing::EchoTestService::NewStub(channel)) {}
 
   Status Echo(ServerContext* server_context, const EchoRequest* request,
@@ -347,10 +346,11 @@ static void SendRpc(grpc::testing::EchoTestService::Stub* stub, int num_rpcs,
   for (int i = 0; i < num_rpcs; ++i) {
     ClientContext context;
     if (with_binary_metadata) {
-      char bytes[8] = {'\0', '\1', '\2', '\3', '\4', '\5', '\6', (char)i};
+      char bytes[8] = {'\0', '\1', '\2', '\3',
+                       '\4', '\5', '\6', static_cast<char>(i)};
       context.AddMetadata("custom-bin", grpc::string(bytes, 8));
     }
-    context.set_compression_algorithm(GRPC_COMPRESS_MESSAGE_GZIP);
+    context.set_compression_algorithm(GRPC_COMPRESS_GZIP);
     Status s = stub->Echo(&context, request, &response);
     EXPECT_EQ(response.message(), request.message());
     EXPECT_TRUE(s.ok());
@@ -683,6 +683,7 @@ TEST_P(End2endTest, SimpleRpcWithCustomUserAgentPrefix) {
 TEST_P(End2endTest, MultipleRpcsWithVariedBinaryMetadataValue) {
   ResetStub();
   std::vector<std::thread> threads;
+  threads.reserve(10);
   for (int i = 0; i < 10; ++i) {
     threads.emplace_back(SendRpc, stub_.get(), 10, true);
   }
@@ -694,6 +695,7 @@ TEST_P(End2endTest, MultipleRpcsWithVariedBinaryMetadataValue) {
 TEST_P(End2endTest, MultipleRpcs) {
   ResetStub();
   std::vector<std::thread> threads;
+  threads.reserve(10);
   for (int i = 0; i < 10; ++i) {
     threads.emplace_back(SendRpc, stub_.get(), 10, false);
   }
@@ -1209,8 +1211,13 @@ TEST_P(End2endTest, ExpectErrorTest) {
   std::vector<ErrorStatus> expected_status;
   expected_status.emplace_back();
   expected_status.back().set_code(13);  // INTERNAL
+  // No Error message or details
+
+  expected_status.emplace_back();
+  expected_status.back().set_code(13);  // INTERNAL
   expected_status.back().set_error_message("text error message");
   expected_status.back().set_binary_error_details("text error details");
+
   expected_status.emplace_back();
   expected_status.back().set_code(13);  // INTERNAL
   expected_status.back().set_error_message("text error message");
@@ -1267,6 +1274,7 @@ TEST_P(ProxyEnd2endTest, SimpleRpcWithEmptyMessages) {
 TEST_P(ProxyEnd2endTest, MultipleRpcs) {
   ResetStub();
   std::vector<std::thread> threads;
+  threads.reserve(10);
   for (int i = 0; i < 10; ++i) {
     threads.emplace_back(SendRpc, stub_.get(), 10, false);
   }
@@ -1333,8 +1341,11 @@ TEST_P(ProxyEnd2endTest, EchoDeadline) {
   EXPECT_TRUE(s.ok());
   gpr_timespec sent_deadline;
   Timepoint2Timespec(deadline, &sent_deadline);
-  // Allow 1 second error.
-  EXPECT_LE(response.param().request_deadline() - sent_deadline.tv_sec, 1);
+  // We want to allow some reasonable error given:
+  // - request_deadline() only has 1sec resolution so the best we can do is +-1
+  // - if sent_deadline.tv_nsec is very close to the next second's boundary we
+  // can end up being off by 2 in one direction.
+  EXPECT_LE(response.param().request_deadline() - sent_deadline.tv_sec, 2);
   EXPECT_GE(response.param().request_deadline() - sent_deadline.tv_sec, -1);
 }
 

@@ -21,14 +21,17 @@
    gpr_cpu_current_cpu()
 */
 
-#include <grpc/support/alloc.h>
 #include <grpc/support/cpu.h>
-#include <grpc/support/log.h>
-#include <grpc/support/sync.h>
-#include <grpc/support/thd.h>
-#include <grpc/support/time.h>
+
 #include <stdio.h>
 #include <string.h>
+
+#include <grpc/support/alloc.h>
+#include <grpc/support/log.h>
+#include <grpc/support/sync.h>
+#include <grpc/support/time.h>
+
+#include "src/core/lib/gprpp/thd.h"
 #include "test/core/util/test_config.h"
 
 /* Test structure is essentially:
@@ -62,7 +65,7 @@ struct cpu_test {
 };
 
 static void worker_thread(void* arg) {
-  struct cpu_test* ct = (struct cpu_test*)arg;
+  struct cpu_test* ct = static_cast<struct cpu_test*>(arg);
   uint32_t cpu;
   unsigned r = 12345678;
   unsigned i, j;
@@ -100,24 +103,32 @@ static void cpu_test(void) {
   uint32_t i;
   int cores_seen = 0;
   struct cpu_test ct;
-  gpr_thd_id thd;
   ct.ncores = gpr_cpu_num_cores();
   GPR_ASSERT(ct.ncores > 0);
-  ct.nthreads = (int)ct.ncores * 3;
+  ct.nthreads = static_cast<int>(ct.ncores) * 3;
   ct.used = static_cast<int*>(gpr_malloc(ct.ncores * sizeof(int)));
   memset(ct.used, 0, ct.ncores * sizeof(int));
   gpr_mu_init(&ct.mu);
   gpr_cv_init(&ct.done_cv);
   ct.is_done = 0;
-  for (i = 0; i < ct.ncores * 3; i++) {
-    GPR_ASSERT(
-        gpr_thd_new(&thd, "grpc_cpu_test", &worker_thread, &ct, nullptr));
+
+  uint32_t nthreads = ct.ncores * 3;
+  grpc_core::Thread* thd =
+      static_cast<grpc_core::Thread*>(gpr_malloc(sizeof(*thd) * nthreads));
+
+  for (i = 0; i < nthreads; i++) {
+    thd[i] = grpc_core::Thread("grpc_cpu_test", &worker_thread, &ct);
+    thd[i].Start();
   }
   gpr_mu_lock(&ct.mu);
   while (!ct.is_done) {
     gpr_cv_wait(&ct.done_cv, &ct.mu, gpr_inf_future(GPR_CLOCK_MONOTONIC));
   }
   gpr_mu_unlock(&ct.mu);
+  for (i = 0; i < nthreads; i++) {
+    thd[i].Join();
+  }
+  gpr_free(thd);
   fprintf(stderr, "Saw cores [");
   fflush(stderr);
   for (i = 0; i < ct.ncores; i++) {

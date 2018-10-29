@@ -19,16 +19,15 @@
 #include <climits>
 #include <thread>
 
-#include <grpc++/channel.h>
-#include <grpc++/client_context.h>
-#include <grpc++/create_channel.h>
-#include <grpc++/server.h>
-#include <grpc++/server_builder.h>
-#include <grpc++/server_context.h>
 #include <grpc/grpc.h>
 #include <grpc/support/log.h>
-#include <grpc/support/thd.h>
 #include <grpc/support/time.h>
+#include <grpcpp/channel.h>
+#include <grpcpp/client_context.h>
+#include <grpcpp/create_channel.h>
+#include <grpcpp/server.h>
+#include <grpcpp/server_builder.h>
+#include <grpcpp/server_context.h>
 
 #include "src/proto/grpc/testing/duplicate/echo_duplicate.grpc.pb.h"
 #include "src/proto/grpc/testing/echo.grpc.pb.h"
@@ -36,7 +35,7 @@
 #include "test/core/util/port.h"
 #include "test/core/util/test_config.h"
 
-#include <grpc++/test/mock_stream.h>
+#include <grpcpp/test/mock_stream.h>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -187,7 +186,7 @@ class TestServiceImpl : public EchoTestService::Service {
                         ServerWriter<EchoResponse>* writer) override {
     EchoResponse response;
     vector<grpc::string> tokens = split(request->message());
-    for (grpc::string token : tokens) {
+    for (const grpc::string& token : tokens) {
       response.set_message(token);
       writer->Write(response);
     }

@@ -20,11 +20,12 @@
 #include <string.h>
 
 #include <grpc/support/alloc.h>
-#include <grpc/support/host_port.h>
 #include <grpc/support/string_util.h>
-#include <grpc/support/subprocess.h>
+
+#include "src/core/lib/gpr/host_port.h"
 #include "src/core/lib/gpr/string.h"
 #include "test/core/util/port.h"
+#include "test/core/util/subprocess.h"
 
 int main(int argc, char** argv) {
   char* me = argv[0];
@@ -36,13 +37,13 @@ int main(int argc, char** argv) {
   gpr_subprocess *svr, *cli;
   /* figure out where we are */
   if (lslash) {
-    memcpy(root, me, (size_t)(lslash - me));
+    memcpy(root, me, static_cast<size_t>(lslash - me));
     root[lslash - me] = 0;
   } else {
     strcpy(root, ".");
   }
   /* start the server */
-  gpr_asprintf(&args[0], "%s/memory_profile_server%s", root,
+  gpr_asprintf(&args[0], "%s/memory_usage_server%s", root,
                gpr_subprocess_binary_extension());
   args[1] = const_cast<char*>("--bind");
   gpr_join_host_port(&args[2], "::", port);
@@ -52,7 +53,7 @@ int main(int argc, char** argv) {
   gpr_free(args[2]);
 
   /* start the client */
-  gpr_asprintf(&args[0], "%s/memory_profile_client%s", root,
+  gpr_asprintf(&args[0], "%s/memory_usage_client%s", root,
                gpr_subprocess_binary_extension());
   args[1] = const_cast<char*>("--target");
   gpr_join_host_port(&args[2], "127.0.0.1", port);

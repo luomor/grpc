@@ -61,7 +61,7 @@ _FORCE_ENVIRON_FOR_WRAPPERS = {
 }
 
 _POLLING_STRATEGIES = {
-    'linux': ['epollex', 'epollsig', 'epoll1', 'poll', 'poll-cv'],
+    'linux': ['epollex', 'epoll1', 'poll', 'poll-cv'],
     'mac': ['poll'],
 }
 
@@ -204,19 +204,28 @@ def _is_use_docker_child():
 
 
 _PythonConfigVars = collections.namedtuple('_ConfigVars', [
-    'shell', 'builder', 'builder_prefix_arguments', 'venv_relative_python',
-    'toolchain', 'runner'
+    'shell',
+    'builder',
+    'builder_prefix_arguments',
+    'venv_relative_python',
+    'toolchain',
+    'runner',
+    'test_name',
+    'iomgr_platform',
 ])
 
 
 def _python_config_generator(name, major, minor, bits, config_vars):
+    name += '_' + config_vars.iomgr_platform
     return PythonConfig(
         name, config_vars.shell + config_vars.builder +
         config_vars.builder_prefix_arguments + [
             _python_pattern_function(major=major, minor=minor, bits=bits)
         ] + [name] + config_vars.venv_relative_python + config_vars.toolchain,
-        config_vars.shell + config_vars.runner +
-        [os.path.join(name, config_vars.venv_relative_python[0])])
+        config_vars.shell + config_vars.runner + [
+            os.path.join(name, config_vars.venv_relative_python[0]),
+            config_vars.test_name
+        ])
 
 
 def _pypy_config_generator(name, major, config_vars):
@@ -281,7 +290,7 @@ class CLanguage(object):
             self._docker_distro, self._make_options = self._compiler_options(
                 self.args.use_docker, self.args.compiler)
         if args.iomgr_platform == "uv":
-            cflags = '-DGRPC_UV -DGRPC_UV_THREAD_CHECK'
+            cflags = '-DGRPC_UV -DGRPC_CUSTOM_IOMGR_THREAD_CHECK -DGRPC_CUSTOM_SOCKET '
             try:
                 cflags += subprocess.check_output(
                     ['pkg-config', '--cflags', 'libuv']).strip() + ' '
@@ -481,6 +490,14 @@ class CLanguage(object):
             return 'Makefile'
 
     def _clang_make_options(self, version_suffix=''):
+        if self.args.config == 'ubsan':
+            return [
+                'CC=clang%s' % version_suffix,
+                'CXX=clang++%s' % version_suffix,
+                'LD=clang++%s' % version_suffix,
+                'LDXX=clang++%s' % version_suffix
+            ]
+
         return [
             'CC=clang%s' % version_suffix,
             'CXX=clang++%s' % version_suffix,
@@ -522,6 +539,10 @@ class CLanguage(object):
         elif compiler == 'clang3.7':
             return ('ubuntu1604',
                     self._clang_make_options(version_suffix='-3.7'))
+        elif compiler == 'clang7.0':
+            # clang++-7.0 alias doesn't exist and there are no other clang versions
+            # installed.
+            return ('sanitizers_jessie', self._clang_make_options())
         else:
             raise Exception('Compiler %s not supported.' % compiler)
 
@@ -738,8 +759,10 @@ class PythonLanguage(object):
             self.python_manager_name(), _docker_arch_suffix(self.args.arch))
 
     def python_manager_name(self):
-        if self.args.compiler in ['python3.5', 'python3.6']:
-            return 'pyenv'
+        if self.args.compiler in [
+                'python2.7', 'python3.5', 'python3.6', 'python3.7'
+        ]:
+            return 'stretch_' + self.args.compiler[len('python'):]
         elif self.args.compiler == 'python_alpine':
             return 'alpine'
         else:
@@ -770,12 +793,16 @@ class PythonLanguage(object):
             venv_relative_python = ['bin/python']
             toolchain = ['unix']
 
+        test_command = 'test_lite'
+        if args.iomgr_platform == 'gevent':
+            test_command = 'test_gevent'
         runner = [
             os.path.abspath('tools/run_tests/helper_scripts/run_python.sh')
         ]
-        config_vars = _PythonConfigVars(shell, builder,
-                                        builder_prefix_arguments,
-                                        venv_relative_python, toolchain, runner)
+
+        config_vars = _PythonConfigVars(
+            shell, builder, builder_prefix_arguments, venv_relative_python,
+            toolchain, runner, test_command, args.iomgr_platform)
         python27_config = _python_config_generator(
             name='py27',
             major='2',
@@ -800,6 +827,12 @@ class PythonLanguage(object):
             minor='6',
             bits=bits,
             config_vars=config_vars)
+        python37_config = _python_config_generator(
+            name='py37',
+            major='3',
+            minor='7',
+            bits=bits,
+            config_vars=config_vars)
         pypy27_config = _pypy_config_generator(
             name='pypy', major='2', config_vars=config_vars)
         pypy32_config = _pypy_config_generator(
@@ -821,6 +854,8 @@ class PythonLanguage(object):
             return (python35_config,)
         elif args.compiler == 'python3.6':
             return (python36_config,)
+        elif args.compiler == 'python3.7':
+            return (python37_config,)
         elif args.compiler == 'pypy':
             return (pypy27_config,)
         elif args.compiler == 'pypy3':
@@ -833,6 +868,7 @@ class PythonLanguage(object):
                 python34_config,
                 python35_config,
                 python36_config,
+                python37_config,
             )
         else:
             raise Exception('Compiler %s not supported.' % args.compiler)
@@ -858,7 +894,7 @@ class RubyLanguage(object):
         tests.append(
             self.config.job_spec(
                 ['tools/run_tests/helper_scripts/run_ruby_end2end_tests.sh'],
-                timeout_seconds=10 * 60,
+                timeout_seconds=20 * 60,
                 environ=_FORCE_ENVIRON_FOR_WRAPPERS))
         return tests
 
@@ -897,22 +933,12 @@ class CSharpLanguage(object):
         self.config = config
         self.args = args
         if self.platform == 'windows':
-            _check_compiler(self.args.compiler, ['coreclr', 'default'])
+            _check_compiler(self.args.compiler, ['default', 'coreclr'])
             _check_arch(self.args.arch, ['default'])
             self._cmake_arch_option = 'x64'
-            self._make_options = []
         else:
             _check_compiler(self.args.compiler, ['default', 'coreclr'])
             self._docker_distro = 'jessie'
-
-            if self.platform == 'mac':
-                # TODO(jtattermusch): EMBED_ZLIB=true currently breaks the mac build
-                self._make_options = ['EMBED_OPENSSL=true']
-                if self.args.compiler != 'coreclr':
-                    # On Mac, official distribution of mono is 32bit.
-                    self._make_options += ['ARCH_FLAGS=-m32', 'LDFLAGS=-m32']
-            else:
-                self._make_options = ['EMBED_OPENSSL=true', 'EMBED_ZLIB=true']
 
     def test_specs(self):
         with open('src/csharp/tests.json') as f:
@@ -931,6 +957,9 @@ class CSharpLanguage(object):
             assembly_subdir += '/net45'
             if self.platform == 'windows':
                 runtime_cmd = []
+            elif self.platform == 'mac':
+                # mono before version 5.2 on MacOS defaults to 32bit runtime
+                runtime_cmd = ['mono', '--arch=64']
             else:
                 runtime_cmd = ['mono']
 
@@ -985,7 +1014,7 @@ class CSharpLanguage(object):
         return ['grpc_csharp_ext']
 
     def make_options(self):
-        return self._make_options
+        return []
 
     def build_steps(self):
         if self.platform == 'windows':
@@ -1003,7 +1032,9 @@ class CSharpLanguage(object):
         if self.platform == 'windows':
             return 'cmake/build/%s/Makefile' % self._cmake_arch_option
         else:
-            return 'Makefile'
+            # no need to set x86 specific flags as run_tests.py
+            # currently forbids x86 C# builds on both Linux and MacOS.
+            return 'cmake/build/Makefile'
 
     def dockerfile_dir(self):
         return 'tools/dockerfile/test/csharp_%s_%s' % (
@@ -1089,6 +1120,12 @@ class ObjCLanguage(object):
                     'SCHEME': 'SwiftSample',
                     'EXAMPLE_PATH': 'src/objective-c/examples/SwiftSample'
                 }),
+            self.config.job_spec(
+                ['test/core/iomgr/ios/CFStreamTests/run_tests.sh'],
+                timeout_seconds=10 * 60,
+                shortname='cfstream-tests',
+                cpu_cost=1e6,
+                environ=_FORCE_ENVIRON_FOR_WRAPPERS),
         ]
 
     def pre_build_steps(self):
@@ -1101,7 +1138,10 @@ class ObjCLanguage(object):
         return []
 
     def build_steps(self):
-        return [['src/objective-c/tests/build_tests.sh']]
+        return [
+            ['src/objective-c/tests/build_tests.sh'],
+            ['test/core/iomgr/ios/CFStreamTests/build_tests.sh'],
+        ]
 
     def post_tests_steps(self):
         return []
@@ -1330,10 +1370,10 @@ argp.add_argument(
     '--compiler',
     choices=[
         'default', 'gcc4.4', 'gcc4.6', 'gcc4.8', 'gcc4.9', 'gcc5.3', 'gcc7.2',
-        'gcc_musl', 'clang3.4', 'clang3.5', 'clang3.6', 'clang3.7', 'python2.7',
-        'python3.4', 'python3.5', 'python3.6', 'pypy', 'pypy3', 'python_alpine',
-        'all_the_cpythons', 'electron1.3', 'electron1.6', 'coreclr', 'cmake',
-        'cmake_vs2015', 'cmake_vs2017'
+        'gcc_musl', 'clang3.4', 'clang3.5', 'clang3.6', 'clang3.7', 'clang7.0',
+        'python2.7', 'python3.4', 'python3.5', 'python3.6', 'python3.7', 'pypy',
+        'pypy3', 'python_alpine', 'all_the_cpythons', 'electron1.3',
+        'electron1.6', 'coreclr', 'cmake', 'cmake_vs2015', 'cmake_vs2017'
     ],
     default='default',
     help=
@@ -1341,7 +1381,7 @@ argp.add_argument(
 )
 argp.add_argument(
     '--iomgr_platform',
-    choices=['native', 'uv'],
+    choices=['native', 'uv', 'gevent'],
     default='native',
     help='Selects iomgr platform to build on')
 argp.add_argument(
@@ -1396,7 +1436,7 @@ argp.add_argument(
     default=None,
     type=str,
     help='Only use the specified comma-delimited list of polling engines. '
-    'Example: --force_use_pollers epollsig,poll '
+    'Example: --force_use_pollers epoll1,poll '
     ' (This flag has no effect if --force_default_poller flag is also used)')
 argp.add_argument(
     '--max_time', default=-1, type=int, help='Maximum test runtime in seconds')
@@ -1407,16 +1447,18 @@ argp.add_argument(
     nargs='?',
     help='Upload test results to a specified BQ table.')
 argp.add_argument(
-    '--disable_auto_set_flakes',
+    '--auto_set_flakes',
     default=False,
     const=True,
     action='store_const',
-    help='Disable rerunning historically flaky tests')
+    help=
+    'Allow repeated runs for tests that have been failing recently (based on BQ historical data).'
+)
 args = argp.parse_args()
 
 flaky_tests = set()
 shortname_to_cpu = {}
-if not args.disable_auto_set_flakes:
+if args.auto_set_flakes:
     try:
         for test in get_bqtest_data():
             if test.flaky: flaky_tests.add(test.name)
@@ -1475,7 +1517,7 @@ else:
     lang_list = args.language
 # We don't support code coverage on some languages
 if 'gcov' in args.config:
-    for bad in ['objc', 'sanity']:
+    for bad in ['csharp', 'grpc-node', 'objc', 'sanity']:
         if bad in lang_list:
             lang_list.remove(bad)
 
@@ -1785,8 +1827,16 @@ def _build_and_run(check_cancelled,
         for antagonist in antagonists:
             antagonist.kill()
         if args.bq_result_table and resultset:
-            upload_results_to_bq(resultset, args.bq_result_table, args,
-                                 platform_string())
+            upload_extra_fields = {
+                'compiler': args.compiler,
+                'config': args.config,
+                'iomgr_platform': args.iomgr_platform,
+                'language': args.language[
+                    0],  # args.language is a list but will always have one element when uploading to BQ is enabled.
+                'platform': platform_string()
+            }
+            upload_results_to_bq(resultset, args.bq_result_table,
+                                 upload_extra_fields)
         if xml_report and resultset:
             report_utils.render_junit_xml_report(
                 resultset, xml_report, suite_name=args.report_suite_name)

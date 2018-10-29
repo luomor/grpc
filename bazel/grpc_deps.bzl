@@ -2,6 +2,22 @@
 
 def grpc_deps():
     """Loads dependencies need to compile and test the grpc library."""
+
+    native.bind(
+        name = "nanopb",
+        actual = "@com_github_nanopb_nanopb//:nanopb",
+    )
+
+    native.bind(
+        name = "absl-base",
+        actual = "@com_google_absl//absl/base",
+    )
+
+    native.bind(
+        name = "absl-time",
+        actual = "@com_google_absl//absl/time:time",
+    )
+
     native.bind(
         name = "libssl",
         actual = "@boringssl//:ssl",
@@ -57,11 +73,36 @@ def grpc_deps():
         actual = "@com_github_gflags_gflags//:gflags",
     )
 
+    native.bind(
+        name = "grpc_cpp_plugin",
+        actual = "@com_github_grpc_grpc//:grpc_cpp_plugin",
+    )
+
+    native.bind(
+        name = "grpc++_codegen_proto",
+        actual = "@com_github_grpc_grpc//:grpc++_codegen_proto",
+    )
+
+    native.bind(
+        name = "opencensus-trace",
+        actual = "@io_opencensus_cpp//opencensus/trace:trace"
+    )
+
+    native.bind(
+        name = "opencensus-stats",
+        actual = "@io_opencensus_cpp//opencensus/stats:stats"
+    )
+
+    native.bind(
+        name = "opencensus-stats-test",
+        actual = "@io_opencensus_cpp//opencensus/stats:test_utils"
+    )
+
     if "boringssl" not in native.existing_rules():
         native.http_archive(
             name = "boringssl",
-            # on the master-with-bazel branch
-            url = "https://boringssl.googlesource.com/boringssl/+archive/886e7d75368e3f4fab3f4d0d3584e4abfc557755.tar.gz",
+            # on the chromium-stable-with-bazel branch
+            url = "https://boringssl.googlesource.com/boringssl/+archive/afc30d43eef92979b05776ec0963c9cede5fb80f.tar.gz",
         )
 
     if "com_github_madler_zlib" not in native.existing_rules():
@@ -75,8 +116,16 @@ def grpc_deps():
     if "com_google_protobuf" not in native.existing_rules():
         native.http_archive(
             name = "com_google_protobuf",
-            strip_prefix = "protobuf-2761122b810fe8861004ae785cc3ab39f384d342",
-            url = "https://github.com/google/protobuf/archive/2761122b810fe8861004ae785cc3ab39f384d342.tar.gz",
+            strip_prefix = "protobuf-48cb18e5c419ddd23d9badcfe4e9df7bde1979b2",
+            url = "https://github.com/google/protobuf/archive/48cb18e5c419ddd23d9badcfe4e9df7bde1979b2.tar.gz",
+        )
+
+    if "com_github_nanopb_nanopb" not in native.existing_rules():
+        native.new_http_archive(
+            name = "com_github_nanopb_nanopb",
+            build_file = "@com_github_grpc_grpc//third_party:nanopb.BUILD",
+            strip_prefix = "nanopb-f8ac463766281625ad710900479130c7fcb4d63b",
+            url = "https://github.com/nanopb/nanopb/archive/f8ac463766281625ad710900479130c7fcb4d63b.tar.gz",
         )
 
     if "com_github_google_googletest" not in native.existing_rules():
@@ -98,8 +147,8 @@ def grpc_deps():
         native.new_http_archive(
             name = "com_github_google_benchmark",
             build_file = "@com_github_grpc_grpc//third_party:benchmark.BUILD",
-            strip_prefix = "benchmark-5b7683f49e1e9223cf9927b24f6fd3d6bd82e3f8",
-            url = "https://github.com/google/benchmark/archive/5b7683f49e1e9223cf9927b24f6fd3d6bd82e3f8.tar.gz",
+            strip_prefix = "benchmark-9913418d323e64a0111ca0da81388260c2bbe1e9",
+            url = "https://github.com/google/benchmark/archive/9913418d323e64a0111ca0da81388260c2bbe1e9.tar.gz",
         )
 
     if "com_github_cares_cares" not in native.existing_rules():
@@ -113,17 +162,79 @@ def grpc_deps():
     if "com_google_absl" not in native.existing_rules():
         native.http_archive(
             name = "com_google_absl",
-            strip_prefix = "abseil-cpp-cc4bed2d74f7c8717e31f9579214ab52a9c9c610",
-            url = "https://github.com/abseil/abseil-cpp/archive/cc4bed2d74f7c8717e31f9579214ab52a9c9c610.tar.gz",
+            strip_prefix = "abseil-cpp-cd95e71df6eaf8f2a282b1da556c2cf1c9b09207",
+            url = "https://github.com/abseil/abseil-cpp/archive/cd95e71df6eaf8f2a282b1da556c2cf1c9b09207.tar.gz",
         )
 
     if "com_github_bazelbuild_bazeltoolchains" not in native.existing_rules():
         native.http_archive(
             name = "com_github_bazelbuild_bazeltoolchains",
-            strip_prefix = "bazel-toolchains-af4681c3d19f063f090222ec3d04108c4e0ca255",
+            strip_prefix = "bazel-toolchains-280edaa6f93623074513d2b426068de42e62ea4d",
             urls = [
-                "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/af4681c3d19f063f090222ec3d04108c4e0ca255.tar.gz",
-                "https://github.com/bazelbuild/bazel-toolchains/archive/af4681c3d19f063f090222ec3d04108c4e0ca255.tar.gz",
+                "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/280edaa6f93623074513d2b426068de42e62ea4d.tar.gz",
+                "https://github.com/bazelbuild/bazel-toolchains/archive/280edaa6f93623074513d2b426068de42e62ea4d.tar.gz",
             ],
-            sha256 = "d58bb2d6c8603f600d522b6104d6192a65339aa26cbba9f11ff5c4b36dedb928",
+            sha256 = "50c9df51f80cdf9ff8f2bc27620c155526b9ba67be95e8a686f32ff8898a06e2",
+        )
+
+    if "io_opencensus_cpp" not in native.existing_rules():
+      native.http_archive(
+            name = "io_opencensus_cpp",
+            strip_prefix = "opencensus-cpp-fdf0f308b1631bb4a942e32ba5d22536a6170274",
+            url = "https://github.com/census-instrumentation/opencensus-cpp/archive/fdf0f308b1631bb4a942e32ba5d22536a6170274.tar.gz",
+        )
+
+
+# TODO: move some dependencies from "grpc_deps" here?
+def grpc_test_only_deps():
+    """Internal, not intended for use by packages that are consuming grpc.
+       Loads dependencies that are only needed to run grpc library's tests."""
+    native.bind(
+        name = "twisted",
+        actual = "@com_github_twisted_twisted//:twisted",
+    )
+
+    native.bind(
+        name = "yaml",
+        actual = "@com_github_yaml_pyyaml//:yaml",
+    )
+
+    if "com_github_twisted_twisted" not in native.existing_rules():
+        native.new_http_archive(
+            name = "com_github_twisted_twisted",
+            strip_prefix = "twisted-twisted-17.5.0",
+            url = "https://github.com/twisted/twisted/archive/twisted-17.5.0.zip",
+            build_file = "@com_github_grpc_grpc//third_party:twisted.BUILD",
+        )
+
+    if "com_github_yaml_pyyaml" not in native.existing_rules():
+        native.new_http_archive(
+            name = "com_github_yaml_pyyaml",
+            strip_prefix = "pyyaml-3.12",
+            url = "https://github.com/yaml/pyyaml/archive/3.12.zip",
+            build_file = "@com_github_grpc_grpc//third_party:yaml.BUILD",
+        )
+
+    if "com_github_twisted_incremental" not in native.existing_rules():
+        native.new_http_archive(
+            name = "com_github_twisted_incremental",
+            strip_prefix = "incremental-incremental-17.5.0",
+            url = "https://github.com/twisted/incremental/archive/incremental-17.5.0.zip",
+            build_file = "@com_github_grpc_grpc//third_party:incremental.BUILD",
+        )
+
+    if "com_github_zopefoundation_zope_interface" not in native.existing_rules():
+        native.new_http_archive(
+            name = "com_github_zopefoundation_zope_interface",
+            strip_prefix = "zope.interface-4.4.3",
+            url = "https://github.com/zopefoundation/zope.interface/archive/4.4.3.zip",
+            build_file = "@com_github_grpc_grpc//third_party:zope_interface.BUILD",
+        )
+
+    if "com_github_twisted_constantly" not in native.existing_rules():
+        native.new_http_archive(
+            name = "com_github_twisted_constantly",
+            strip_prefix = "constantly-15.1.0",
+            url = "https://github.com/twisted/constantly/archive/15.1.0.zip",
+            build_file = "@com_github_grpc_grpc//third_party:constantly.BUILD",
         )

@@ -53,7 +53,7 @@ while [ $retries -lt 3 ]; do
   out=$(xcodebuild \
         -workspace Tests.xcworkspace \
         -scheme AllTests \
-        -destination name="iPhone 6" \
+        -destination name="iPhone 8" \
         HOST_PORT_LOCALSSL=localhost:5051 \
         HOST_PORT_LOCAL=localhost:5050 \
         HOST_PORT_REMOTE=grpc-test.sandbox.googleapis.com \
@@ -83,6 +83,26 @@ echo "TIME:  $(date)"
 xcodebuild \
     -workspace Tests.xcworkspace \
     -scheme CoreCronetEnd2EndTests \
+    -destination name="iPhone 8" \
+    test \
+    | egrep -v "$XCODEBUILD_FILTER" \
+    | egrep -v '^$' \
+    | egrep -v "(GPBDictionary|GPBArray)" -
+
+echo "TIME:  $(date)"
+xcodebuild \
+    -workspace Tests.xcworkspace \
+    -scheme CoreCronetEnd2EndTests_Asan \
+    -destination name="iPhone 6" \
+    test \
+    | egrep -v "$XCODEBUILD_FILTER" \
+    | egrep -v '^$' \
+    | egrep -v "(GPBDictionary|GPBArray)" -
+
+echo "TIME:  $(date)"
+xcodebuild \
+    -workspace Tests.xcworkspace \
+    -scheme CoreCronetEnd2EndTests_Tsan \
     -destination name="iPhone 6" \
     test \
     | egrep -v "$XCODEBUILD_FILTER" \
@@ -93,7 +113,7 @@ echo "TIME:  $(date)"
 xcodebuild \
     -workspace Tests.xcworkspace \
     -scheme CronetUnitTests \
-    -destination name="iPhone 6" \
+    -destination name="iPhone 8" \
     test \
     | egrep -v "$XCODEBUILD_FILTER" \
     | egrep -v '^$' \
@@ -103,8 +123,51 @@ echo "TIME:  $(date)"
 xcodebuild \
     -workspace Tests.xcworkspace \
     -scheme InteropTestsRemoteWithCronet \
-    -destination name="iPhone 6" \
+    -destination name="iPhone 8" \
     HOST_PORT_REMOTE=grpc-test.sandbox.googleapis.com \
+    test \
+    | egrep -v "$XCODEBUILD_FILTER" \
+    | egrep -v '^$' \
+    | egrep -v "(GPBDictionary|GPBArray)" -
+
+echo "TIME:  $(date)"
+xcodebuild \
+    -workspace Tests.xcworkspace \
+    -scheme InteropTestsRemoteCFStream \
+    -destination name="iPhone 8" \
+    HOST_PORT_REMOTE=grpc-test.sandbox.googleapis.com \
+    test \
+    | egrep -v "$XCODEBUILD_FILTER" \
+    | egrep -v '^$' \
+    | egrep -v "(GPBDictionary|GPBArray)" -
+
+echo "TIME:  $(date)"
+xcodebuild \
+    -workspace Tests.xcworkspace \
+    -scheme InteropTestsLocalCleartextCFStream \
+    -destination name="iPhone 8" \
+    HOST_PORT_LOCAL=localhost:5050 \
+    test \
+    | egrep -v "$XCODEBUILD_FILTER" \
+    | egrep -v '^$' \
+    | egrep -v "(GPBDictionary|GPBArray)" -
+
+echo "TIME:  $(date)"
+xcodebuild \
+    -workspace Tests.xcworkspace \
+    -scheme InteropTestsLocalSSLCFStream \
+    -destination name="iPhone 8" \
+    HOST_PORT_LOCALSSL=localhost:5051 \
+    test \
+    | egrep -v "$XCODEBUILD_FILTER" \
+    | egrep -v '^$' \
+    | egrep -v "(GPBDictionary|GPBArray)" -
+
+echo "TIME:  $(date)"
+xcodebuild \
+    -workspace Tests.xcworkspace \
+    -scheme UnitTests \
+    -destination name="iPhone 8" \
     test \
     | egrep -v "$XCODEBUILD_FILTER" \
     | egrep -v '^$' \

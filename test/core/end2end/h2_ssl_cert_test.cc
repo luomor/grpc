@@ -22,11 +22,11 @@
 #include <string.h>
 
 #include <grpc/support/alloc.h>
-#include <grpc/support/host_port.h>
 #include <grpc/support/log.h>
 
 #include "src/core/lib/channel/channel_args.h"
 #include "src/core/lib/gpr/env.h"
+#include "src/core/lib/gpr/host_port.h"
 #include "src/core/lib/gpr/string.h"
 #include "src/core/lib/gpr/tmpfile.h"
 #include "src/core/lib/security/credentials/credentials.h"
@@ -57,8 +57,6 @@ static grpc_end2end_test_fixture chttp2_create_fixture_secure_fullstack(
 
   f.fixture_data = ffd;
   f.cq = grpc_completion_queue_create_for_next(nullptr);
-  f.shutdown_cq = grpc_completion_queue_create_for_pluck(nullptr);
-
   return f;
 }
 
@@ -171,8 +169,8 @@ typedef enum { NONE, SELF_SIGNED, SIGNED, BAD_CERT_PAIR } certtype;
       default:                                                               \
         break;                                                               \
     }                                                                        \
-    ssl_creds =                                                              \
-        grpc_ssl_credentials_create(test_root_cert, key_cert_pair, NULL);    \
+    ssl_creds = grpc_ssl_credentials_create(test_root_cert, key_cert_pair,   \
+                                            NULL, NULL);                     \
     grpc_arg ssl_name_override = {                                           \
         GRPC_ARG_STRING,                                                     \
         const_cast<char*>(GRPC_SSL_TARGET_NAME_OVERRIDE_ARG),                \
@@ -202,6 +200,7 @@ typedef enum { SUCCESS, FAIL } test_result;
      FEATURE_MASK_SUPPORTS_DELAYED_CONNECTION |       \
          FEATURE_MASK_SUPPORTS_PER_CALL_CREDENTIALS | \
          FEATURE_MASK_SUPPORTS_CLIENT_CHANNEL,        \
+     "foo.test.google.fr",                            \
      chttp2_create_fixture_secure_fullstack,          \
      CLIENT_INIT_NAME(cert_type),                     \
      SERVER_INIT_NAME(request_type),                  \
@@ -270,27 +269,13 @@ static void drain_cq(grpc_completion_queue* cq) {
   } while (ev.type != GRPC_QUEUE_SHUTDOWN);
 }
 
+// Shuts down the server.
+// Side effect - Also shuts down and drains the completion queue.
 static void shutdown_server(grpc_end2end_test_fixture* f) {
   if (!f->server) return;
-  /* Perform a completion queue next, so that any pending operations can be
-   * finished, and resources can be released. This is so that, shutdown does not
-   * hang. For example, the server might be stuck in the handshaking code, which
-   * keeps a ref to a listener. Unless, it is unref'd, shutdown won't be able
-   * to proceed.
-   *
-   * (If shutdown times out, it is probably because 100ms wasn't enough. In that
-   * case, the deadline can be increased. Or, we could simply have another
-   * thread for the server to poll the completion queue while the shutdown
-   * progresses.)
-   */
-  GPR_ASSERT(grpc_completion_queue_next(
-                 f->cq, grpc_timeout_milliseconds_to_deadline(100), nullptr)
-                 .type == GRPC_QUEUE_TIMEOUT);
-  grpc_server_shutdown_and_notify(f->server, f->shutdown_cq, tag(1000));
-  GPR_ASSERT(grpc_completion_queue_pluck(f->shutdown_cq, tag(1000),
-                                         grpc_timeout_seconds_to_deadline(5),
-                                         nullptr)
-                 .type == GRPC_OP_COMPLETE);
+  grpc_server_shutdown_and_notify(f->server, f->cq, tag(1000));
+  grpc_completion_queue_shutdown(f->cq);
+  drain_cq(f->cq);
   grpc_server_destroy(f->server);
   f->server = nullptr;
 }
@@ -304,11 +289,7 @@ static void shutdown_client(grpc_end2end_test_fixture* f) {
 static void end_test(grpc_end2end_test_fixture* f) {
   shutdown_client(f);
   shutdown_server(f);
-
-  grpc_completion_queue_shutdown(f->cq);
-  drain_cq(f->cq);
   grpc_completion_queue_destroy(f->cq);
-  grpc_completion_queue_destroy(f->shutdown_cq);
 }
 
 static void simple_request_body(grpc_end2end_test_fixture f,
@@ -333,7 +314,8 @@ static void simple_request_body(grpc_end2end_test_fixture f,
   op->flags = GRPC_INITIAL_METADATA_WAIT_FOR_READY;
   op->reserved = nullptr;
   op++;
-  error = grpc_call_start_batch(c, ops, (size_t)(op - ops), tag(1), nullptr);
+  error = grpc_call_start_batch(c, ops, static_cast<size_t>(op - ops), tag(1),
+                                nullptr);
   GPR_ASSERT(GRPC_CALL_OK == error);
 
   CQ_EXPECT_COMPLETION(cqv, tag(1), expected_result == SUCCESS);

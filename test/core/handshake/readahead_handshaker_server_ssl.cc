@@ -29,7 +29,7 @@
 #include <grpc/support/log.h>
 #include <grpc/support/string_util.h>
 #include <grpc/support/sync.h>
-#include <grpc/support/thd.h>
+
 #include "src/core/lib/iomgr/load_file.h"
 #include "test/core/util/port.h"
 #include "test/core/util/test_config.h"
@@ -64,16 +64,18 @@ static void readahead_handshaker_do_handshake(
 
 const grpc_handshaker_vtable readahead_handshaker_vtable = {
     readahead_handshaker_destroy, readahead_handshaker_shutdown,
-    readahead_handshaker_do_handshake};
+    readahead_handshaker_do_handshake, "read_ahead"};
 
 static grpc_handshaker* readahead_handshaker_create() {
-  grpc_handshaker* h = (grpc_handshaker*)gpr_zalloc(sizeof(grpc_handshaker));
+  grpc_handshaker* h =
+      static_cast<grpc_handshaker*>(gpr_zalloc(sizeof(grpc_handshaker)));
   grpc_handshaker_init(&readahead_handshaker_vtable, h);
   return h;
 }
 
 static void readahead_handshaker_factory_add_handshakers(
     grpc_handshaker_factory* hf, const grpc_channel_args* args,
+    grpc_pollset_set* interested_parties,
     grpc_handshake_manager* handshake_mgr) {
   grpc_handshake_manager_add(handshake_mgr, readahead_handshaker_create());
 }

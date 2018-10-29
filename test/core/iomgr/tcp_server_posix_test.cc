@@ -181,13 +181,14 @@ static void test_no_op_with_start(void) {
 static void test_no_op_with_port(void) {
   grpc_core::ExecCtx exec_ctx;
   grpc_resolved_address resolved_addr;
-  struct sockaddr_in* addr = (struct sockaddr_in*)resolved_addr.addr;
+  struct sockaddr_in* addr =
+      reinterpret_cast<struct sockaddr_in*>(resolved_addr.addr);
   grpc_tcp_server* s;
   GPR_ASSERT(GRPC_ERROR_NONE == grpc_tcp_server_create(nullptr, nullptr, &s));
   LOG_TEST("test_no_op_with_port");
 
   memset(&resolved_addr, 0, sizeof(resolved_addr));
-  resolved_addr.len = sizeof(struct sockaddr_in);
+  resolved_addr.len = static_cast<socklen_t>(sizeof(struct sockaddr_in));
   addr->sin_family = AF_INET;
   int port = -1;
   GPR_ASSERT(grpc_tcp_server_add_port(s, &resolved_addr, &port) ==
@@ -200,14 +201,15 @@ static void test_no_op_with_port(void) {
 static void test_no_op_with_port_and_start(void) {
   grpc_core::ExecCtx exec_ctx;
   grpc_resolved_address resolved_addr;
-  struct sockaddr_in* addr = (struct sockaddr_in*)resolved_addr.addr;
+  struct sockaddr_in* addr =
+      reinterpret_cast<struct sockaddr_in*>(resolved_addr.addr);
   grpc_tcp_server* s;
   GPR_ASSERT(GRPC_ERROR_NONE == grpc_tcp_server_create(nullptr, nullptr, &s));
   LOG_TEST("test_no_op_with_port_and_start");
   int port = -1;
 
   memset(&resolved_addr, 0, sizeof(resolved_addr));
-  resolved_addr.len = sizeof(struct sockaddr_in);
+  resolved_addr.len = static_cast<socklen_t>(sizeof(struct sockaddr_in));
   addr->sin_family = AF_INET;
   GPR_ASSERT(grpc_tcp_server_add_port(s, &resolved_addr, &port) ==
                  GRPC_ERROR_NONE &&
@@ -225,7 +227,7 @@ static grpc_error* tcp_connect(const test_addr* remote,
   int clifd;
   int nconnects_before;
   const struct sockaddr* remote_addr =
-      (const struct sockaddr*)remote->addr.addr;
+      reinterpret_cast<const struct sockaddr*>(remote->addr.addr);
 
   gpr_log(GPR_INFO, "Connecting to %s", remote->str);
   gpr_mu_lock(g_mu);
@@ -237,7 +239,8 @@ static grpc_error* tcp_connect(const test_addr* remote,
     return GRPC_OS_ERROR(errno, "Failed to create socket");
   }
   gpr_log(GPR_DEBUG, "start connect to %s", remote->str);
-  if (connect(clifd, remote_addr, (socklen_t)remote->addr.len) != 0) {
+  if (connect(clifd, remote_addr, static_cast<socklen_t>(remote->addr.len)) !=
+      0) {
     gpr_mu_unlock(g_mu);
     close(clifd);
     return GRPC_OS_ERROR(errno, "connect");
@@ -286,9 +289,9 @@ static void test_connect(size_t num_connects,
   grpc_resolved_address resolved_addr;
   grpc_resolved_address resolved_addr1;
   struct sockaddr_storage* const addr =
-      (struct sockaddr_storage*)resolved_addr.addr;
+      reinterpret_cast<struct sockaddr_storage*>(resolved_addr.addr);
   struct sockaddr_storage* const addr1 =
-      (struct sockaddr_storage*)resolved_addr1.addr;
+      reinterpret_cast<struct sockaddr_storage*>(resolved_addr1.addr);
   unsigned svr_fd_count;
   int port;
   int svr_port;
@@ -305,13 +308,14 @@ static void test_connect(size_t num_connects,
   LOG_TEST("test_connect");
   gpr_log(GPR_INFO,
           "clients=%lu, num chan args=%lu, remote IP=%s, test_dst_addrs=%d",
-          (unsigned long)num_connects,
-          (unsigned long)(channel_args != nullptr ? channel_args->num_args : 0),
+          static_cast<unsigned long>(num_connects),
+          static_cast<unsigned long>(
+              channel_args != nullptr ? channel_args->num_args : 0),
           dst_addrs != nullptr ? "<specific>" : "::", test_dst_addrs);
   memset(&resolved_addr, 0, sizeof(resolved_addr));
   memset(&resolved_addr1, 0, sizeof(resolved_addr1));
-  resolved_addr.len = sizeof(struct sockaddr_storage);
-  resolved_addr1.len = sizeof(struct sockaddr_storage);
+  resolved_addr.len = static_cast<socklen_t>(sizeof(struct sockaddr_storage));
+  resolved_addr1.len = static_cast<socklen_t>(sizeof(struct sockaddr_storage));
   addr->ss_family = addr1->ss_family = AF_INET;
   GPR_ASSERT(GRPC_LOG_IF_ERROR(
       "grpc_tcp_server_add_port",
@@ -383,7 +387,7 @@ static void test_connect(size_t num_connects,
         size_t connect_num;
         test_addr dst;
         GPR_ASSERT(fd >= 0);
-        dst.addr.len = sizeof(dst.addr.addr);
+        dst.addr.len = static_cast<socklen_t>(sizeof(dst.addr.addr));
         GPR_ASSERT(getsockname(fd, (struct sockaddr*)dst.addr.addr,
                                (socklen_t*)&dst.addr.len) == 0);
         GPR_ASSERT(dst.addr.len <= sizeof(dst.addr.addr));
@@ -456,10 +460,10 @@ int main(int argc, char** argv) {
         continue;
       } else if (ifa_it->ifa_addr->sa_family == AF_INET) {
         dst_addrs->addrs[dst_addrs->naddrs].addr.len =
-            sizeof(struct sockaddr_in);
+            static_cast<socklen_t>(sizeof(struct sockaddr_in));
       } else if (ifa_it->ifa_addr->sa_family == AF_INET6) {
         dst_addrs->addrs[dst_addrs->naddrs].addr.len =
-            sizeof(struct sockaddr_in6);
+            static_cast<socklen_t>(sizeof(struct sockaddr_in6));
       } else {
         continue;
       }

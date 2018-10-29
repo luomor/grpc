@@ -38,23 +38,45 @@
   [GRPCHost flushChannelCache];
 }
 
-+ (void)setDefaultCompressMethod:(GRPCCompressAlgorithm)algorithm
-                         forhost:(nonnull NSString *)host {
++ (void)setDefaultCompressMethod:(GRPCCompressAlgorithm)algorithm forhost:(nonnull NSString *)host {
   GRPCHost *hostConfig = [GRPCHost hostWithAddress:host];
   switch (algorithm) {
     case GRPCCompressNone:
       hostConfig.compressAlgorithm = GRPC_COMPRESS_NONE;
       break;
     case GRPCCompressDeflate:
-      hostConfig.compressAlgorithm = GRPC_COMPRESS_MESSAGE_DEFLATE;
+      hostConfig.compressAlgorithm = GRPC_COMPRESS_DEFLATE;
       break;
     case GRPCCompressGzip:
-      hostConfig.compressAlgorithm = GRPC_COMPRESS_MESSAGE_GZIP;
+      hostConfig.compressAlgorithm = GRPC_COMPRESS_GZIP;
       break;
     default:
       NSLog(@"Invalid compression algorithm");
       abort();
   }
+}
+
++ (void)setKeepaliveWithInterval:(int)interval
+                         timeout:(int)timeout
+                         forHost:(nonnull NSString *)host {
+  GRPCHost *hostConfig = [GRPCHost hostWithAddress:host];
+  hostConfig.keepaliveInterval = interval;
+  hostConfig.keepaliveTimeout = timeout;
+}
+
++ (void)enableRetry:(BOOL)enabled forHost:(nonnull NSString *)host {
+  GRPCHost *hostConfig = [GRPCHost hostWithAddress:host];
+  hostConfig.retryEnabled = enabled;
+}
+
++ (void)setMinConnectTimeout:(unsigned int)timeout
+              initialBackoff:(unsigned int)initialBackoff
+                  maxBackoff:(unsigned int)maxBackoff
+                     forHost:(nonnull NSString *)host {
+  GRPCHost *hostConfig = [GRPCHost hostWithAddress:host];
+  hostConfig.minConnectTimeout = timeout;
+  hostConfig.initialConnectBackoff = initialBackoff;
+  hostConfig.maxConnectBackoff = maxBackoff;
 }
 
 @end

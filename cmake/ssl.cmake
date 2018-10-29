@@ -17,7 +17,14 @@ if("${gRPC_SSL_PROVIDER}" STREQUAL "module")
     set(BORINGSSL_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/boringssl)
   endif()
   if(EXISTS "${BORINGSSL_ROOT_DIR}/CMakeLists.txt")
-    set(OPENSSL_NO_ASM ON)  # make boringssl buildable with Visual Studio
+    if (MSVC AND NOT CMAKE_GENERATOR STREQUAL "Ninja")
+      # Visual Studio build with assembly optimizations is broken,
+      # but it works with Ninja generator.
+      # This will get eventually fixed in cmake, but until then
+      # we need to disable assembly optimizations.
+      # See https://github.com/grpc/grpc/issues/16376
+      set(OPENSSL_NO_ASM ON)
+    endif()
     add_subdirectory(${BORINGSSL_ROOT_DIR} third_party/boringssl)
     if(TARGET ssl)
       set(_gRPC_SSL_LIBRARIES ssl)
@@ -31,8 +38,18 @@ if("${gRPC_SSL_PROVIDER}" STREQUAL "module")
     set(gRPC_INSTALL FALSE)
   endif()
 elseif("${gRPC_SSL_PROVIDER}" STREQUAL "package")
+  # OpenSSL installation directory can be configured by setting OPENSSL_ROOT_DIR
+  # We expect to locate OpenSSL using the built-in cmake module as the openssl
+  # project itself does not provide installation support in its CMakeLists.txt
+  # See https://cmake.org/cmake/help/v3.6/module/FindOpenSSL.html
   find_package(OpenSSL REQUIRED)
-  set(_gRPC_SSL_LIBRARIES ${OPENSSL_LIBRARIES})
+  
+  if(TARGET OpenSSL::SSL)
+    set(_gRPC_SSL_LIBRARIES OpenSSL::SSL OpenSSL::Crypto)
+  else()
+    set(_gRPC_SSL_LIBRARIES ${OPENSSL_LIBRARIES})
+  endif()
   set(_gRPC_SSL_INCLUDE_DIR ${OPENSSL_INCLUDE_DIR})
+  
   set(_gRPC_FIND_SSL "if(NOT OPENSSL_FOUND)\n  find_package(OpenSSL)\nendif()")
 endif()

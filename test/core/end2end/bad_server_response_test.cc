@@ -27,11 +27,12 @@
 #include <grpc/grpc.h>
 #include <grpc/slice.h>
 #include <grpc/support/alloc.h>
-#include <grpc/support/host_port.h>
 #include <grpc/support/log.h>
-#include <grpc/support/thd.h>
 
+#include "src/core/lib/gpr/host_port.h"
 #include "src/core/lib/gpr/string.h"
+#include "src/core/lib/gprpp/memory.h"
+#include "src/core/lib/gprpp/thd.h"
 #include "src/core/lib/iomgr/sockaddr.h"
 #include "src/core/lib/slice/slice_internal.h"
 #include "src/core/lib/slice/slice_string_helpers.h"
@@ -103,7 +104,7 @@ static void handle_write() {
 
   grpc_slice_buffer_reset_and_unref(&state.outgoing_buffer);
   grpc_slice_buffer_add(&state.outgoing_buffer, slice);
-  grpc_endpoint_write(state.tcp, &state.outgoing_buffer, &on_write);
+  grpc_endpoint_write(state.tcp, &state.outgoing_buffer, &on_write, nullptr);
 }
 
 static void handle_read(void* arg, grpc_error* error) {
@@ -133,7 +134,7 @@ static void on_connect(void* arg, grpc_endpoint* tcp,
                        grpc_pollset* accepting_pollset,
                        grpc_tcp_server_acceptor* acceptor) {
   gpr_free(acceptor);
-  test_tcp_server* server = (test_tcp_server*)arg;
+  test_tcp_server* server = static_cast<test_tcp_server*>(arg);
   GRPC_CLOSURE_INIT(&on_read, handle_read, nullptr, grpc_schedule_on_exec_ctx);
   GRPC_CLOSURE_INIT(&on_write, done_write, nullptr, grpc_schedule_on_exec_ctx);
   grpc_slice_buffer_init(&state.temp_incoming_buffer);
@@ -196,8 +197,8 @@ static void start_rpc(int target_port, grpc_status_code expected_status,
   op->flags = 0;
   op->reserved = nullptr;
   op++;
-  error = grpc_call_start_batch(state.call, ops, (size_t)(op - ops), tag(1),
-                                nullptr);
+  error = grpc_call_start_batch(state.call, ops, static_cast<size_t>(op - ops),
+                                tag(1), nullptr);
 
   GPR_ASSERT(GRPC_CALL_OK == error);
 
@@ -236,7 +237,7 @@ typedef struct {
 } poll_args;
 
 static void actually_poll_server(void* arg) {
-  poll_args* pa = (poll_args*)arg;
+  poll_args* pa = static_cast<poll_args*>(arg);
   gpr_timespec deadline = n_sec_deadline(10);
   while (true) {
     bool done = gpr_atm_acq_load(&state.done_atm) != 0;
@@ -253,15 +254,17 @@ static void actually_poll_server(void* arg) {
   gpr_free(pa);
 }
 
-static void poll_server_until_read_done(test_tcp_server* server,
-                                        gpr_event* signal_when_done) {
+static grpc_core::Thread* poll_server_until_read_done(
+    test_tcp_server* server, gpr_event* signal_when_done) {
   gpr_atm_rel_store(&state.done_atm, 0);
   state.write_done = 0;
-  gpr_thd_id id;
-  poll_args* pa = (poll_args*)gpr_malloc(sizeof(*pa));
+  poll_args* pa = static_cast<poll_args*>(gpr_malloc(sizeof(*pa)));
   pa->server = server;
   pa->signal_when_done = signal_when_done;
-  gpr_thd_new(&id, "grpc_poll_server", actually_poll_server, pa, nullptr);
+  auto* th = grpc_core::New<grpc_core::Thread>("grpc_poll_server",
+                                               actually_poll_server, pa);
+  th->Start();
+  return th;
 }
 
 static void run_test(const char* response_payload,
@@ -281,9 +284,11 @@ static void run_test(const char* response_payload,
   state.response_payload_length = response_payload_length;
 
   /* poll server until sending out the response */
-  poll_server_until_read_done(&test_server, &ev);
+  grpc_core::UniquePtr<grpc_core::Thread> thdptr(
+      poll_server_until_read_done(&test_server, &ev));
   start_rpc(server_port, expected_status, expected_detail);
   gpr_event_wait(&ev, gpr_inf_future(GPR_CLOCK_REALTIME));
+  thdptr->Join();
 
   /* clean up */
   grpc_endpoint_shutdown(state.tcp,

@@ -16,14 +16,14 @@
  *
  */
 
-#include <grpc++/channel.h>
-#include <grpc++/create_channel.h>
-#include <grpc++/impl/grpc_library.h>
-#include <grpc++/security/credentials.h>
-#include <grpc++/security/server_credentials.h>
-#include <grpc++/server.h>
-#include <grpc++/server_builder.h>
 #include <grpc/support/log.h>
+#include <grpcpp/channel.h>
+#include <grpcpp/create_channel.h>
+#include <grpcpp/impl/grpc_library.h>
+#include <grpcpp/security/credentials.h>
+#include <grpcpp/security/server_credentials.h>
+#include <grpcpp/server.h>
+#include <grpcpp/server_builder.h>
 #include <gtest/gtest.h>
 
 #include "src/core/ext/transport/chttp2/transport/chttp2_transport.h"
@@ -100,7 +100,7 @@ class EndpointPairFixture {
       }
 
       grpc_server_setup_transport(server_->c_server(), transport, nullptr,
-                                  server_args);
+                                  server_args, 0);
       grpc_chttp2_transport_start_reading(transport, nullptr, nullptr);
     }
 
@@ -118,7 +118,7 @@ class EndpointPairFixture {
           "target", &c_args, GRPC_CLIENT_DIRECT_CHANNEL, transport);
       grpc_chttp2_transport_start_reading(transport, nullptr, nullptr);
 
-      channel_ = CreateChannelInternal("", channel);
+      channel_ = CreateChannelInternal("", channel, nullptr);
     }
   }
 
@@ -142,18 +142,24 @@ class EndpointPairFixture {
 
 class InProcessCHTTP2 : public EndpointPairFixture {
  public:
-  InProcessCHTTP2(Service* service)
-      : EndpointPairFixture(service, MakeEndpoints()) {}
+  InProcessCHTTP2(Service* service, grpc_passthru_endpoint_stats* stats)
+      : EndpointPairFixture(service, MakeEndpoints(stats)), stats_(stats) {}
 
-  int writes_performed() const { return stats_.num_writes; }
+  virtual ~InProcessCHTTP2() {
+    if (stats_ != nullptr) {
+      grpc_passthru_endpoint_stats_destroy(stats_);
+    }
+  }
+
+  int writes_performed() const { return stats_->num_writes; }
 
  private:
-  grpc_passthru_endpoint_stats stats_;
+  grpc_passthru_endpoint_stats* stats_;
 
-  grpc_endpoint_pair MakeEndpoints() {
+  static grpc_endpoint_pair MakeEndpoints(grpc_passthru_endpoint_stats* stats) {
     grpc_endpoint_pair p;
     grpc_passthru_endpoint_create(&p.client, &p.server, initialize_stuff.rq(),
-                                  &stats_);
+                                  stats);
     return p;
   }
 };
@@ -162,7 +168,8 @@ static double UnaryPingPong(int request_size, int response_size) {
   const int kIterations = 10000;
 
   EchoTestService::AsyncService service;
-  std::unique_ptr<InProcessCHTTP2> fixture(new InProcessCHTTP2(&service));
+  std::unique_ptr<InProcessCHTTP2> fixture(
+      new InProcessCHTTP2(&service, grpc_passthru_endpoint_stats_create()));
   EchoRequest send_request;
   EchoResponse send_response;
   EchoResponse recv_response;
@@ -200,17 +207,17 @@ static double UnaryPingPong(int request_size, int response_size) {
         stub->AsyncEcho(&cli_ctx, send_request, fixture->cq()));
     void* t;
     bool ok;
+    response_reader->Finish(&recv_response, &recv_status, tag(4));
     GPR_ASSERT(fixture->cq()->Next(&t, &ok));
     GPR_ASSERT(ok);
     GPR_ASSERT(t == tag(0) || t == tag(1));
     intptr_t slot = reinterpret_cast<intptr_t>(t);
     ServerEnv* senv = server_env[slot];
     senv->response_writer.Finish(send_response, Status::OK, tag(3));
-    response_reader->Finish(&recv_response, &recv_status, tag(4));
     for (int i = (1 << 3) | (1 << 4); i != 0;) {
       GPR_ASSERT(fixture->cq()->Next(&t, &ok));
       GPR_ASSERT(ok);
-      int tagnum = (int)reinterpret_cast<intptr_t>(t);
+      int tagnum = static_cast<int>(reinterpret_cast<intptr_t>(t));
       GPR_ASSERT(i & (1 << tagnum));
       i -= 1 << tagnum;
     }
@@ -223,7 +230,8 @@ static double UnaryPingPong(int request_size, int response_size) {
   }
 
   double writes_per_iteration =
-      (double)fixture->writes_performed() / (double)kIterations;
+      static_cast<double>(fixture->writes_performed()) /
+      static_cast<double>(kIterations);
 
   fixture.reset();
   server_env[0]->~ServerEnv();

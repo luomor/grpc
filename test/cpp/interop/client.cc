@@ -20,18 +20,19 @@
 #include <unordered_map>
 
 #include <gflags/gflags.h>
-#include <grpc++/channel.h>
-#include <grpc++/client_context.h>
 #include <grpc/grpc.h>
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
-#include <grpc/support/useful.h>
+#include <grpcpp/channel.h>
+#include <grpcpp/client_context.h>
 
 #include "src/core/lib/gpr/string.h"
 #include "test/cpp/interop/client_helper.h"
 #include "test/cpp/interop/interop_client.h"
 #include "test/cpp/util/test_config.h"
 
+DEFINE_bool(use_alts, false,
+            "Whether to use alts. Enable alts will disable tls.");
 DEFINE_bool(use_tls, false, "Whether to use tls.");
 DEFINE_string(custom_credentials_type, "", "User provided credentials type.");
 DEFINE_bool(use_test_ca, false, "False to use SSL roots for google");
@@ -45,6 +46,7 @@ DEFINE_string(
     "all : all test cases;\n"
     "cancel_after_begin : cancel stream after starting it;\n"
     "cancel_after_first_response: cancel on first response;\n"
+    "channel_soak: sends 'soak_iterations' rpcs, rebuilds channel each time;\n"
     "client_compressed_streaming : compressed request streaming with "
     "client_compressed_unary : single compressed request;\n"
     "client_streaming : request streaming with single response;\n"
@@ -55,10 +57,12 @@ DEFINE_string(
     "half_duplex : half-duplex streaming;\n"
     "jwt_token_creds: large_unary with JWT token auth;\n"
     "large_unary : single request and (large) response;\n"
+    "long_lived_channel: sends large_unary rpcs over a long-lived channel;\n"
     "oauth2_auth_token: raw oauth2 access token auth;\n"
     "per_rpc_creds: raw oauth2 access token on a single rpc;\n"
     "ping_pong : full-duplex streaming;\n"
     "response streaming;\n"
+    "rpc_soak: 'sends soak_iterations' large_unary rpcs;\n"
     "server_compressed_streaming : single request with compressed "
     "server_compressed_unary : single compressed response;\n"
     "server_streaming : single request with response streaming;\n"
@@ -81,6 +85,12 @@ DEFINE_bool(do_not_abort_on_transient_failures, false,
             "whether abort() is called or not. It does not control whether the "
             "test is retried in case of transient failures (and currently the "
             "interop tests are not retried even if this flag is set to true)");
+DEFINE_int32(soak_iterations, 1000,
+             "number of iterations to use for the two soak tests; rpc_soak and "
+             "channel_soak");
+DEFINE_int32(iteration_interval, 10,
+             "The interval in seconds between rpcs. This is used by "
+             "long_connection test");
 
 using grpc::testing::CreateChannelForTestCase;
 using grpc::testing::GetServiceAccountJsonKey;
@@ -90,8 +100,9 @@ int main(int argc, char** argv) {
   grpc::testing::InitTest(&argc, &argv, true);
   gpr_log(GPR_INFO, "Testing these cases: %s", FLAGS_test_case.c_str());
   int ret = 0;
-  grpc::testing::InteropClient client(CreateChannelForTestCase(FLAGS_test_case),
-                                      true,
+  grpc::testing::ChannelCreationFunc channel_creation_func =
+      std::bind(&CreateChannelForTestCase, FLAGS_test_case);
+  grpc::testing::InteropClient client(channel_creation_func, true,
                                       FLAGS_do_not_abort_on_transient_failures);
 
   std::unordered_map<grpc::string, std::function<bool()>> actions;
@@ -150,6 +161,14 @@ int main(int argc, char** argv) {
       std::bind(&grpc::testing::InteropClient::DoUnimplementedService, &client);
   actions["cacheable_unary"] =
       std::bind(&grpc::testing::InteropClient::DoCacheableUnary, &client);
+  actions["channel_soak"] =
+      std::bind(&grpc::testing::InteropClient::DoChannelSoakTest, &client,
+                FLAGS_soak_iterations);
+  actions["rpc_soak"] = std::bind(&grpc::testing::InteropClient::DoRpcSoakTest,
+                                  &client, FLAGS_soak_iterations);
+  actions["long_lived_channel"] =
+      std::bind(&grpc::testing::InteropClient::DoLongLivedChannelTest, &client,
+                FLAGS_soak_iterations, FLAGS_iteration_interval);
 
   UpdateActions(&actions);
 

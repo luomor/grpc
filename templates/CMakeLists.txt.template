@@ -35,7 +35,7 @@
 
   def get_deps(target_dict):
     deps = []
-    if target_dict.get('baselib', False):
+    if target_dict.get('baselib', False) or target_dict['name'] == 'address_sorting':
       deps.append("${_gRPC_BASELIB_LIBRARIES}")
     if target_dict.get('build', None) in ['protoc']:
       deps.append("${_gRPC_PROTOBUF_PROTOC_LIBRARIES}")
@@ -46,6 +46,7 @@
     if target_dict['name'] in ['grpc', 'grpc_cronet', 'grpc_unsecure']:
       deps.append("${_gRPC_ZLIB_LIBRARIES}")
       deps.append("${_gRPC_CARES_LIBRARIES}")
+      deps.append("${_gRPC_ADDRESS_SORTING_LIBRARIES}")
     deps.append("${_gRPC_ALLTARGETS_LIBRARIES}")
     for d in target_dict.get('deps', []):
       if d == 'benchmark':
@@ -77,13 +78,17 @@
   set(PACKAGE_BUGREPORT "https://github.com/grpc/grpc/issues/")
   project(<%text>${PACKAGE_NAME}</%text> C CXX)
 
-  set(gRPC_INSTALL_BINDIR "<%text>${CMAKE_INSTALL_PREFIX}</%text>/bin" CACHE PATH "Installation directory for executables")
-  set(gRPC_INSTALL_LIBDIR "<%text>${CMAKE_INSTALL_PREFIX}</%text>/lib" CACHE PATH "Installation directory for libraries")
-  set(gRPC_INSTALL_INCLUDEDIR "<%text>${CMAKE_INSTALL_PREFIX}</%text>/include" CACHE PATH "Installation directory for headers")
-  set(gRPC_INSTALL_CMAKEDIR "<%text>${CMAKE_INSTALL_PREFIX}/lib/cmake/${PACKAGE_NAME}</%text>" CACHE PATH "Installation directory for cmake config files")
+  set(gRPC_INSTALL_BINDIR "bin" CACHE STRING "Installation directory for executables")
+  set(gRPC_INSTALL_LIBDIR "lib" CACHE STRING "Installation directory for libraries")
+  set(gRPC_INSTALL_INCLUDEDIR "include" CACHE STRING "Installation directory for headers")
+  set(gRPC_INSTALL_CMAKEDIR "lib/cmake/<%text>${PACKAGE_NAME}</%text>" CACHE STRING "Installation directory for cmake config files")
+  set(gRPC_INSTALL_SHAREDIR "share/grpc" CACHE STRING "Installation directory for root certificates")
 
   # Options
   option(gRPC_BUILD_TESTS "Build tests" OFF)
+  option(gRPC_BUILD_CODEGEN "Build codegen" ON)
+  option(gRPC_BUILD_CSHARP_EXT "Build C# extensions" ON)
+  option(gRPC_BACKWARDS_COMPATIBILITY_MODE "Build libraries that are binary compatible across a larger number of OS and libc versions" OFF)
 
   set(gRPC_INSTALL_default ON)
   if (NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
@@ -125,6 +130,8 @@
       set(_gRPC_PLATFORM_LINUX ON)
     elseif(<%text>${CMAKE_SYSTEM_NAME}</%text> MATCHES "Darwin")
       set(_gRPC_PLATFORM_MAC ON)
+    elseif(<%text>${CMAKE_SYSTEM_NAME}</%text> MATCHES "Android")
+      set(_gRPC_PLATFORM_ANDROID ON)
     else()
       set(_gRPC_PLATFORM_POSIX ON)
     endif()
@@ -135,12 +142,16 @@
 
   ## Some libraries are shared even with BUILD_SHARED_LIBRARIES=OFF
   set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
+  
+  add_definitions(-DPB_FIELD_16BIT)
 
   if (MSVC)
     include(cmake/msvc_static_runtime.cmake)
     add_definitions(-D_WIN32_WINNT=0x600 -D_SCL_SECURE_NO_WARNINGS -D_CRT_SECURE_NO_WARNINGS -D_WINSOCK_DEPRECATED_NO_WARNINGS)
     # needed to compile protobuf
     add_definitions(/wd4065 /wd4506)
+    # TODO(jtattermusch): revisit warnings that were silenced as part of upgrade to protobuf3.6.0
+    add_definitions(/wd4200 /wd4291 /wd4244)
     # TODO(jtattermusch): revisit C4267 occurrences throughout the code
     add_definitions(/wd4267)
     # TODO(jtattermusch): needed to build boringssl with VS2017, revisit later
@@ -154,12 +165,33 @@
     set(_gRPC_PROTOBUF_LIBRARY_NAME "libprotobuf")
   endif()
 
+  if(gRPC_BACKWARDS_COMPATIBILITY_MODE)
+    add_definitions(-DGPR_BACKWARDS_COMPATIBILITY_MODE)
+    if (_gRPC_PLATFORM_MAC)
+      # some C++11 constructs not supported before OS X 10.9
+      set(CMAKE_OSX_DEPLOYMENT_TARGET 10.9)
+    endif()
+  endif()
+
+  if (_gRPC_PLATFORM_LINUX OR _gRPC_PLATFORM_MAC)
+    # C core has C++ source code, but should not depend on libstc++ (for better portability).
+    # We need to use a few tricks to convince cmake to do that.
+    # https://stackoverflow.com/questions/15058403/how-to-stop-cmake-from-linking-against-libstdc
+    set(CMAKE_CXX_IMPLICIT_LINK_LIBRARIES "")
+    # Exceptions and RTTI must be off to avoid dependency on libstdc++
+    set(_gRPC_CORE_NOSTDCXX_FLAGS -fno-exceptions -fno-rtti)
+  else()
+    set(_gRPC_CORE_NOSTDCXX_FLAGS "")
+  endif()
+
   include(cmake/zlib.cmake)
   include(cmake/cares.cmake)
   include(cmake/protobuf.cmake)
   include(cmake/ssl.cmake)
   include(cmake/gflags.cmake)
   include(cmake/benchmark.cmake)
+  include(cmake/address_sorting.cmake)
+  include(cmake/nanopb.cmake)
 
   if(NOT MSVC)
     set(CMAKE_C_FLAGS   "<%text>${CMAKE_C_FLAGS}</%text> -std=c99")
@@ -168,6 +200,8 @@
 
   if(_gRPC_PLATFORM_MAC)
     set(_gRPC_ALLTARGETS_LIBRARIES <%text>${CMAKE_DL_LIBS}</%text> m pthread)
+  elseif(_gRPC_PLATFORM_ANDROID)
+    set(_gRPC_ALLTARGETS_LIBRARIES <%text>${CMAKE_DL_LIBS}</%text> m)
   elseif(UNIX)
     set(_gRPC_ALLTARGETS_LIBRARIES <%text>${CMAKE_DL_LIBS}</%text> rt m pthread)
   endif()
@@ -287,9 +321,16 @@
   if (gRPC_BUILD_TESTS)
   ${cc_library(lib)}
   endif (gRPC_BUILD_TESTS)
-  % else:
+  % elif lib.name in ['grpc_csharp_ext']:
+  if (gRPC_BUILD_CSHARP_EXT)
   ${cc_library(lib)}
   ${cc_install(lib)}
+  endif (gRPC_BUILD_CSHARP_EXT)
+  % else:
+  ${cc_library(lib)}
+  % if not lib.build in ["tool"]:
+  ${cc_install(lib)}
+  % endif
   % endif
   % endif
   % endif
@@ -304,16 +345,28 @@
   ${cc_binary(tgt)}
   ${get_platforms_condition_end(tgt.platforms)}\
   endif (gRPC_BUILD_TESTS)
-  % else:
+  % elif tgt.build in ["protoc"]:
+  if (gRPC_BUILD_CODEGEN)
   ${get_platforms_condition_begin(tgt.platforms)}\
   ${cc_binary(tgt)}
   ${cc_install(tgt)}
+  ${get_platforms_condition_end(tgt.platforms)}\
+  endif (gRPC_BUILD_CODEGEN)
+  % else:
+  ${get_platforms_condition_begin(tgt.platforms)}\
+  ${cc_binary(tgt)}
+  % if not tgt.build in ["tool"]:
+  ${cc_install(tgt)}
+  % endif
   ${get_platforms_condition_end(tgt.platforms)}\
   % endif
   % endif
   % endfor
 
   <%def name="cc_library(lib)">
+  % if any(proto_re.match(src) for src in lib.src):
+  if (gRPC_BUILD_CODEGEN)
+  % endif
   add_library(${lib.name}${' SHARED' if lib.get('dll', None) == 'only' else ''}
   % for src in lib.src:
   % if not proto_re.match(src):
@@ -358,6 +411,8 @@
     PRIVATE <%text>${_gRPC_BENCHMARK_INCLUDE_DIR}</%text>
     PRIVATE <%text>${_gRPC_CARES_INCLUDE_DIR}</%text>
     PRIVATE <%text>${_gRPC_GFLAGS_INCLUDE_DIR}</%text>
+    PRIVATE <%text>${_gRPC_ADDRESS_SORTING_INCLUDE_DIR}</%text>
+    PRIVATE <%text>${_gRPC_NANOPB_INCLUDE_DIR}</%text>
   % if lib.build in ['test', 'private'] and lib.language == 'c++':
     PRIVATE third_party/googletest/googletest/include
     PRIVATE third_party/googletest/googletest
@@ -368,13 +423,28 @@
     PRIVATE <%text>${_gRPC_PROTO_GENS_DIR}</%text>
   % endif
   )
-
+  % if lib.language in ['c', 'csharp']:
+    # avoid dependency on libstdc++
+    if (_gRPC_CORE_NOSTDCXX_FLAGS)
+      set_target_properties(${lib.name} PROPERTIES LINKER_LANGUAGE C)
+      # only use the flags for C++ source files
+      target_compile_options(${lib.name} PRIVATE <%text>$<$<COMPILE_LANGUAGE:CXX>:${_gRPC_CORE_NOSTDCXX_FLAGS}></%text>)
+    endif()
+  % endif
   % if len(get_deps(lib)) > 0:
   target_link_libraries(${lib.name}
   % for dep in get_deps(lib):
     ${dep}
   % endfor
   )
+  % endif
+  % if lib.name in ["gpr"]:
+  if (_gRPC_PLATFORM_ANDROID)
+    target_link_libraries(gpr
+      android
+      log
+    )
+  endif (_gRPC_PLATFORM_ANDROID)
   % endif
 
   % if len(lib.get('public_headers', [])) > 0:
@@ -389,6 +459,9 @@
       DESTINATION "<%text>${gRPC_INSTALL_INCLUDEDIR}/${_path}</%text>"
     )
   endforeach()
+  % endif
+  % if any(proto_re.match(src) for src in lib.src):
+  endif (gRPC_BUILD_CODEGEN)
   % endif
   </%def>
 
@@ -427,6 +500,8 @@
     PRIVATE <%text>${_gRPC_BENCHMARK_INCLUDE_DIR}</%text>
     PRIVATE <%text>${_gRPC_CARES_INCLUDE_DIR}</%text>
     PRIVATE <%text>${_gRPC_GFLAGS_INCLUDE_DIR}</%text>
+    PRIVATE <%text>${_gRPC_ADDRESS_SORTING_INCLUDE_DIR}</%text>
+    PRIVATE <%text>${_gRPC_NANOPB_INCLUDE_DIR}</%text>
   % if tgt.build in ['test', 'private'] and tgt.language == 'c++':
     PRIVATE third_party/googletest/googletest/include
     PRIVATE third_party/googletest/googletest
@@ -444,6 +519,14 @@
     ${dep}
   % endfor
   )
+
+  % if tgt.language in ['c', 'csharp']:
+    # avoid dependency on libstdc++
+    if (_gRPC_CORE_NOSTDCXX_FLAGS)
+      set_target_properties(${tgt.name} PROPERTIES LINKER_LANGUAGE C)
+      target_compile_options(${tgt.name} PRIVATE <%text>$<$<COMPILE_LANGUAGE:CXX>:${_gRPC_CORE_NOSTDCXX_FLAGS}></%text>)
+    endif()
+  % endif
   % endif
   </%def>
 
@@ -471,3 +554,6 @@
       DESTINATION <%text>${gRPC_INSTALL_CMAKEDIR}</%text>
     )
   endforeach()
+  
+  install(FILES <%text>${CMAKE_CURRENT_SOURCE_DIR}/etc/roots.pem</%text>
+    DESTINATION <%text>${gRPC_INSTALL_SHAREDIR}</%text>)

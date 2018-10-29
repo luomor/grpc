@@ -25,8 +25,8 @@
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
 #include <grpc/support/time.h>
-#include <grpc/support/useful.h>
 
+#include "src/core/lib/gpr/useful.h"
 #include "src/core/lib/slice/slice_internal.h"
 #include "test/core/util/test_config.h"
 
@@ -77,7 +77,8 @@ static void end_test(grpc_endpoint_test_config config) { config.clean_up(); }
 static grpc_slice* allocate_blocks(size_t num_bytes, size_t slice_size,
                                    size_t* num_blocks, uint8_t* current_data) {
   size_t nslices = num_bytes / slice_size + (num_bytes % slice_size ? 1 : 0);
-  grpc_slice* slices = (grpc_slice*)gpr_malloc(sizeof(grpc_slice) * nslices);
+  grpc_slice* slices =
+      static_cast<grpc_slice*>(gpr_malloc(sizeof(grpc_slice) * nslices));
   size_t num_bytes_left = num_bytes;
   size_t i;
   size_t j;
@@ -117,7 +118,7 @@ struct read_and_write_test_state {
 
 static void read_and_write_test_read_handler(void* data, grpc_error* error) {
   struct read_and_write_test_state* state =
-      (struct read_and_write_test_state*)data;
+      static_cast<struct read_and_write_test_state*>(data);
 
   state->bytes_read += count_slices(
       state->incoming.slices, state->incoming.count, &state->current_read_data);
@@ -134,7 +135,7 @@ static void read_and_write_test_read_handler(void* data, grpc_error* error) {
 
 static void read_and_write_test_write_handler(void* data, grpc_error* error) {
   struct read_and_write_test_state* state =
-      (struct read_and_write_test_state*)data;
+      static_cast<struct read_and_write_test_state*>(data);
   grpc_slice* slices = nullptr;
   size_t nslices;
 
@@ -149,8 +150,8 @@ static void read_and_write_test_write_handler(void* data, grpc_error* error) {
                                &state->current_write_data);
       grpc_slice_buffer_reset_and_unref(&state->outgoing);
       grpc_slice_buffer_addn(&state->outgoing, slices, nslices);
-      grpc_endpoint_write(state->write_ep, &state->outgoing,
-                          &state->done_write);
+      grpc_endpoint_write(state->write_ep, &state->outgoing, &state->done_write,
+                          nullptr);
       gpr_free(slices);
       return;
     }
@@ -246,7 +247,7 @@ static void read_and_write_test(grpc_endpoint_test_config config,
 
 static void inc_on_failure(void* arg, grpc_error* error) {
   gpr_mu_lock(g_mu);
-  *(int*)arg += (error != GRPC_ERROR_NONE);
+  *static_cast<int*>(arg) += (error != GRPC_ERROR_NONE);
   GPR_ASSERT(GRPC_LOG_IF_ERROR("kick", grpc_pollset_kick(g_pollset, nullptr)));
   gpr_mu_unlock(g_mu);
 }
@@ -293,7 +294,8 @@ static void multiple_shutdown_test(grpc_endpoint_test_config config) {
   grpc_slice_buffer_add(&slice_buffer, grpc_slice_from_copied_string("a"));
   grpc_endpoint_write(f.client_ep, &slice_buffer,
                       GRPC_CLOSURE_CREATE(inc_on_failure, &fail_count,
-                                          grpc_schedule_on_exec_ctx));
+                                          grpc_schedule_on_exec_ctx),
+                      nullptr);
   wait_for_fail_count(&fail_count, 3);
   grpc_endpoint_shutdown(f.client_ep,
                          GRPC_ERROR_CREATE_FROM_STATIC_STRING("Test Shutdown"));

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-require 'grpc'
+require 'spec_helper'
 
 include GRPC::Core
 
@@ -550,7 +550,8 @@ describe 'the http client/server' do
 
   after(:example) do
     @ch.close
-    @server.close(deadline)
+    @server.shutdown_and_notify(deadline)
+    @server.close
   end
 
   it_behaves_like 'basic GRPC message delivery is OK' do
@@ -583,7 +584,8 @@ describe 'the secure http client/server' do
   end
 
   after(:example) do
-    @server.close(deadline)
+    @server.shutdown_and_notify(deadline)
+    @server.close
   end
 
   it_behaves_like 'basic GRPC message delivery is OK' do

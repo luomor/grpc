@@ -54,7 +54,9 @@ def run_multiple_killed_watches(num_threads, sleep_time)
 end
 
 def main
+  STDERR.puts '10 iterations, sleep 0.1 before killing thread'
   run_multiple_killed_watches(10, 0.1)
+  STDERR.puts '1000 iterations, sleep 0.001 before killing thread'
   run_multiple_killed_watches(1000, 0.001)
 end
 

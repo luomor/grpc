@@ -25,6 +25,7 @@
 #include <grpc/support/log.h>
 #include "src/core/ext/transport/chttp2/transport/bin_encoder.h"
 #include "src/core/lib/gpr/string.h"
+#include "src/core/lib/iomgr/exec_ctx.h"
 #include "src/core/lib/slice/slice_internal.h"
 #include "src/core/lib/slice/slice_string_helpers.h"
 
@@ -66,6 +67,16 @@ static grpc_slice base64_decode_with_length(const char* s,
   grpc_slice_unref_internal(ss);
   return out;
 }
+
+static size_t base64_infer_length(const char* s) {
+  grpc_slice ss = grpc_slice_from_copied_string(s);
+  size_t out = grpc_chttp2_base64_infer_length_after_decode(ss);
+  grpc_slice_unref_internal(ss);
+  return out;
+}
+
+#define EXPECT_DECODED_LENGTH(s, expected) \
+  GPR_ASSERT((expected) == base64_infer_length((s)));
 
 #define EXPECT_SLICE_EQ(expected, slice)                                    \
   expect_slice_eq(                                                          \
@@ -131,6 +142,26 @@ int main(int argc, char** argv) {
     // Test illegal charactors in grpc_chttp2_base64_decode_with_length
     EXPECT_SLICE_EQ("", base64_decode_with_length("Zm:v", 3));
     EXPECT_SLICE_EQ("", base64_decode_with_length("Zm=v", 3));
+
+    EXPECT_DECODED_LENGTH("", 0);
+    EXPECT_DECODED_LENGTH("ab", 1);
+    EXPECT_DECODED_LENGTH("abc", 2);
+    EXPECT_DECODED_LENGTH("abcd", 3);
+    EXPECT_DECODED_LENGTH("abcdef", 4);
+    EXPECT_DECODED_LENGTH("abcdefg", 5);
+    EXPECT_DECODED_LENGTH("abcdefgh", 6);
+
+    EXPECT_DECODED_LENGTH("ab==", 1);
+    EXPECT_DECODED_LENGTH("abc=", 2);
+    EXPECT_DECODED_LENGTH("abcd", 3);
+    EXPECT_DECODED_LENGTH("abcdef==", 4);
+    EXPECT_DECODED_LENGTH("abcdefg=", 5);
+    EXPECT_DECODED_LENGTH("abcdefgh", 6);
+
+    EXPECT_DECODED_LENGTH("a", 0);
+    EXPECT_DECODED_LENGTH("a===", 0);
+    EXPECT_DECODED_LENGTH("abcde", 0);
+    EXPECT_DECODED_LENGTH("abcde===", 0);
   }
   grpc_shutdown();
   return all_ok ? 0 : 1;

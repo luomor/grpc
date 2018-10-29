@@ -27,7 +27,7 @@
 #include "test/core/util/memory_counters.h"
 
 #include <benchmark/benchmark.h>
-#include <grpc++/impl/grpc_library.h>
+#include <grpcpp/impl/grpc_library.h>
 
 class Library {
  public:
@@ -63,6 +63,7 @@ extern gpr_atm gpr_now_call_count;
 class TrackCounters {
  public:
   TrackCounters() { grpc_stats_collect(&stats_begin_); }
+  virtual ~TrackCounters() {}
   virtual void Finish(benchmark::State& state);
   virtual void AddLabel(const grpc::string& label);
   virtual void AddToLabel(std::ostream& out, benchmark::State& state);

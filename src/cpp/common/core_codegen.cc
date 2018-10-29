@@ -16,11 +16,10 @@
  *
  */
 
-#include <grpc++/impl/codegen/core_codegen.h>
+#include <grpcpp/impl/codegen/core_codegen.h>
 
 #include <stdlib.h>
 
-#include <grpc++/support/config.h>
 #include <grpc/byte_buffer.h>
 #include <grpc/byte_buffer_reader.h>
 #include <grpc/grpc.h>
@@ -30,6 +29,7 @@
 #include <grpc/support/log.h>
 #include <grpc/support/port_platform.h>
 #include <grpc/support/sync.h>
+#include <grpcpp/support/config.h>
 
 #include "src/core/lib/profiling/timers.h"
 
@@ -98,6 +98,17 @@ void CoreCodegen::grpc_byte_buffer_destroy(grpc_byte_buffer* bb) {
   ::grpc_byte_buffer_destroy(bb);
 }
 
+size_t CoreCodegen::grpc_byte_buffer_length(grpc_byte_buffer* bb) {
+  return ::grpc_byte_buffer_length(bb);
+}
+
+grpc_call_error CoreCodegen::grpc_call_start_batch(grpc_call* call,
+                                                   const grpc_op* ops,
+                                                   size_t nops, void* tag,
+                                                   void* reserved) {
+  return ::grpc_call_start_batch(call, ops, nops, tag, reserved);
+}
+
 grpc_call_error CoreCodegen::grpc_call_cancel_with_status(
     grpc_call* call, grpc_status_code status, const char* description,
     void* reserved) {
@@ -133,6 +144,12 @@ grpc_slice CoreCodegen::grpc_slice_new_with_user_data(void* p, size_t len,
                                                       void (*destroy)(void*),
                                                       void* user_data) {
   return ::grpc_slice_new_with_user_data(p, len, destroy, user_data);
+}
+
+grpc_slice CoreCodegen::grpc_slice_new_with_len(void* p, size_t len,
+                                                void (*destroy)(void*,
+                                                                size_t)) {
+  return ::grpc_slice_new_with_len(p, len, destroy);
 }
 
 grpc_slice CoreCodegen::grpc_empty_slice() { return ::grpc_empty_slice(); }

@@ -75,10 +75,20 @@ _EXEMPT = frozenset((
     'examples/python/multiplex/route_guide_pb2_grpc.py',
     'examples/python/route_guide/route_guide_pb2.py',
     'examples/python/route_guide/route_guide_pb2_grpc.py',
+    'src/core/ext/filters/client_channel/health/health.pb.h',
+    'src/core/ext/filters/client_channel/health/health.pb.c',
     'src/core/ext/filters/client_channel/lb_policy/grpclb/proto/grpc/lb/v1/load_balancer.pb.h',
     'src/core/ext/filters/client_channel/lb_policy/grpclb/proto/grpc/lb/v1/load_balancer.pb.c',
-    'src/cpp/server/health/health.pb.h',
-    'src/cpp/server/health/health.pb.c',
+    'src/core/ext/filters/client_channel/lb_policy/grpclb/proto/grpc/lb/v1/google/protobuf/duration.pb.h',
+    'src/core/ext/filters/client_channel/lb_policy/grpclb/proto/grpc/lb/v1/google/protobuf/duration.pb.c',
+    'src/core/ext/filters/client_channel/lb_policy/grpclb/proto/grpc/lb/v1/google/protobuf/timestamp.pb.h',
+    'src/core/ext/filters/client_channel/lb_policy/grpclb/proto/grpc/lb/v1/google/protobuf/timestamp.pb.c',
+    'src/core/tsi/alts/handshaker/altscontext.pb.h',
+    'src/core/tsi/alts/handshaker/altscontext.pb.c',
+    'src/core/tsi/alts/handshaker/handshaker.pb.h',
+    'src/core/tsi/alts/handshaker/handshaker.pb.c',
+    'src/core/tsi/alts/handshaker/transport_security_common.pb.h',
+    'src/core/tsi/alts/handshaker/transport_security_common.pb.c',
 
     # An older file originally from outside gRPC.
     'src/php/tests/bootstrap.php',
@@ -86,9 +96,17 @@ _EXEMPT = frozenset((
     'tools/grpcz/census.proto',
     # status.proto copied from googleapis
     'src/proto/grpc/status/status.proto',
+
+    # Gradle wrappers used to build for Android
+    'examples/android/helloworld/gradlew.bat',
+    'src/android/test/interop/gradlew.bat',
+
+    # Designer-generated source
+    'examples/csharp/HelloworldXamarin/Droid/Resources/Resource.designer.cs',
+    'examples/csharp/HelloworldXamarin/iOS/ViewController.designer.cs',
 ))
 
-RE_YEAR = r'Copyright (?P<first_year>[0-9]+\-)?(?P<last_year>[0-9]+) gRPC authors.'
+RE_YEAR = r'Copyright (?P<first_year>[0-9]+\-)?(?P<last_year>[0-9]+) ([Tt]he )?gRPC [Aa]uthors(\.|)'
 RE_LICENSE = dict(
     (k, r'\n'.join(LICENSE_PREFIX[k] +
                    (RE_YEAR if re.search(RE_YEAR, line) else re.escape(line))
@@ -152,7 +170,9 @@ for filename in filename_list:
     m = re.search(re_license, text)
     if m:
         pass
-    elif 'DO NOT EDIT' not in text and filename != 'src/boringssl/err_data.c':
+    elif 'DO NOT EDIT' not in text and filename not in [
+            'src/boringssl/err_data.c', 'src/boringssl/crypto_test_data.cc'
+    ]:
         log(1, 'copyright missing', filename)
         ok = False
 

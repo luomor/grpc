@@ -23,21 +23,22 @@
 #include <mutex>
 #include <thread>
 
-#include <grpc++/generic/async_generic_service.h>
-#include <grpc++/resource_quota.h>
-#include <grpc++/security/server_credentials.h>
-#include <grpc++/server.h>
-#include <grpc++/server_builder.h>
-#include <grpc++/server_context.h>
-#include <grpc++/support/config.h>
 #include <grpc/grpc.h>
 #include <grpc/support/alloc.h>
-#include <grpc/support/host_port.h>
 #include <grpc/support/log.h>
+#include <grpcpp/generic/async_generic_service.h>
+#include <grpcpp/resource_quota.h>
+#include <grpcpp/security/server_credentials.h>
+#include <grpcpp/server.h>
+#include <grpcpp/server_builder.h>
+#include <grpcpp/server_context.h>
+#include <grpcpp/support/config.h>
 
+#include "src/core/lib/gpr/host_port.h"
 #include "src/core/lib/surface/completion_queue.h"
-#include "src/proto/grpc/testing/services.grpc.pb.h"
+#include "src/proto/grpc/testing/benchmark_service.grpc.pb.h"
 #include "test/core/util/test_config.h"
+#include "test/cpp/qps/qps_server_builder.h"
 #include "test/cpp/qps/server.h"
 
 namespace grpc {
@@ -74,19 +75,19 @@ class AsyncQpsServerTest final : public grpc::testing::Server {
                                  ResponseType*)>
           process_rpc)
       : Server(config) {
-    ServerBuilder builder;
+    std::unique_ptr<ServerBuilder> builder = CreateQpsServerBuilder();
 
     auto port_num = port();
     // Negative port number means inproc server, so no listen port needed
     if (port_num >= 0) {
       char* server_address = nullptr;
       gpr_join_host_port(&server_address, "::", port_num);
-      builder.AddListeningPort(server_address,
-                               Server::CreateServerCredentials(config));
+      builder->AddListeningPort(server_address,
+                                Server::CreateServerCredentials(config));
       gpr_free(server_address);
     }
 
-    register_service(&builder, &async_service_);
+    register_service(builder.get(), &async_service_);
 
     int num_threads = config.async_server_threads();
     if (num_threads <= 0) {  // dynamic sizing
@@ -97,15 +98,15 @@ class AsyncQpsServerTest final : public grpc::testing::Server {
     int tpc = std::max(1, config.threads_per_cq());  // 1 if unspecified
     int num_cqs = (num_threads + tpc - 1) / tpc;     // ceiling operator
     for (int i = 0; i < num_cqs; i++) {
-      srv_cqs_.emplace_back(builder.AddCompletionQueue());
+      srv_cqs_.emplace_back(builder->AddCompletionQueue());
     }
     for (int i = 0; i < num_threads; i++) {
       cq_.emplace_back(i % srv_cqs_.size());
     }
 
-    ApplyConfigToBuilder(config, &builder);
+    ApplyConfigToBuilder(config, builder.get());
 
-    server_ = builder.BuildAndStart();
+    server_ = builder->BuildAndStart();
 
     auto process_rpc_bound =
         std::bind(process_rpc, config.payload_config(), std::placeholders::_1,
@@ -240,11 +241,9 @@ class AsyncQpsServerTest final : public grpc::testing::Server {
    private:
     std::mutex mu_;
   };
-  static void* tag(ServerRpcContext* func) {
-    return reinterpret_cast<void*>(func);
-  }
+  static void* tag(ServerRpcContext* func) { return static_cast<void*>(func); }
   static ServerRpcContext* detag(void* tag) {
-    return reinterpret_cast<ServerRpcContext*>(tag);
+    return static_cast<ServerRpcContext*>(tag);
   }
 
   class ServerRpcContextUnaryImpl final : public ServerRpcContext {

@@ -19,6 +19,8 @@
 #ifndef GRPC_CORE_LIB_CHANNEL_CHANNEL_ARGS_H
 #define GRPC_CORE_LIB_CHANNEL_CHANNEL_ARGS_H
 
+#include <grpc/support/port_platform.h>
+
 #include <grpc/compression.h>
 #include <grpc/grpc.h>
 #include "src/core/lib/iomgr/socket_mutator.h"
@@ -109,6 +111,11 @@ typedef struct grpc_integer_options {
 int grpc_channel_arg_get_integer(const grpc_arg* arg,
                                  const grpc_integer_options options);
 
+/** Returns the value of \a arg if \a arg is of type GRPC_ARG_STRING.
+    Otherwise, emits a warning log, and returns nullptr.
+    If arg is nullptr, returns nullptr, and does not emit a warning. */
+char* grpc_channel_arg_get_string(const grpc_arg* arg);
+
 bool grpc_channel_arg_get_bool(const grpc_arg* arg, bool default_value);
 
 // Helpers for creating channel args.
@@ -116,5 +123,9 @@ grpc_arg grpc_channel_arg_string_create(char* name, char* value);
 grpc_arg grpc_channel_arg_integer_create(char* name, int value);
 grpc_arg grpc_channel_arg_pointer_create(char* name, void* value,
                                          const grpc_arg_pointer_vtable* vtable);
+
+// Returns a string representing channel args in human-readable form.
+// Callers takes ownership of result.
+char* grpc_channel_args_string(const grpc_channel_args* args);
 
 #endif /* GRPC_CORE_LIB_CHANNEL_CHANNEL_ARGS_H */

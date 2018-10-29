@@ -48,6 +48,14 @@ else
   echo "WARNING: grpc-go not found, it won't be mounted to the docker container."
 fi
 
+echo "GRPC_DART_ROOT: ${GRPC_DART_ROOT:=$(cd ../grpc-dart && pwd)}"
+if [ -n "$GRPC_DART_ROOT" ]
+then
+  MOUNT_ARGS+=" -v $GRPC_DART_ROOT:/var/local/jenkins/grpc-dart:ro"
+else
+  echo "WARNING: grpc-dart not found, it won't be mounted to the docker container."
+fi
+
 echo "GRPC_NODE_ROOT: ${GRPC_NODE_ROOT:=$(cd ../grpc-node && pwd)}"
 if [ -n "$GRPC_NODE_ROOT" ]
 then
@@ -96,6 +104,7 @@ CONTAINER_NAME="build_${BASE_NAME}_$(uuidgen)"
 # Same for $TTY_FLAG
 # shellcheck disable=SC2086
 (docker run \
+  --cap-add SYS_PTRACE \
   -e CCACHE_DIR=/tmp/ccache \
   -e THIS_IS_REALLY_NEEDED='see https://github.com/docker/docker/issues/14203 for why docker is awful' \
   -e THIS_IS_REALLY_NEEDED_ONCE_AGAIN='For issue 4835. See https://github.com/docker/docker/issues/14203 for why docker is awful' \

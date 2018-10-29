@@ -19,11 +19,11 @@
 #include <grpc/grpc.h>
 #include <grpc/grpc_security.h>
 #include <grpc/support/alloc.h>
-#include <grpc/support/host_port.h>
 #include <grpc/support/log.h>
-#include <grpc/support/thd.h>
 
 #include "src/core/lib/channel/channel_args.h"
+#include "src/core/lib/gpr/host_port.h"
+#include "src/core/lib/gprpp/thd.h"
 #include "src/core/lib/iomgr/exec_ctx.h"
 #include "test/core/end2end/data/ssl_test_data.h"
 #include "test/core/util/port.h"
@@ -168,7 +168,7 @@ static const test_fixture insecure_test = {
 
 static grpc_channel* secure_test_create_channel(const char* addr) {
   grpc_channel_credentials* ssl_creds =
-      grpc_ssl_credentials_create(test_root_cert, nullptr, nullptr);
+      grpc_ssl_credentials_create(test_root_cert, nullptr, nullptr, nullptr);
   grpc_arg ssl_name_override = {
       GRPC_ARG_STRING,
       const_cast<char*>(GRPC_SSL_TARGET_NAME_OVERRIDE_ARG),
