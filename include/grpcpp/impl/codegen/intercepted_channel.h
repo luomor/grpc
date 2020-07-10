@@ -21,6 +21,10 @@
 
 #include <grpcpp/impl/codegen/channel_interface.h>
 
+namespace grpc_impl {
+class CompletionQueue;
+}
+
 namespace grpc {
 
 namespace internal {
@@ -42,11 +46,11 @@ class InterceptedChannel : public ChannelInterface {
   }
 
  private:
-  InterceptedChannel(ChannelInterface* channel, int pos)
+  InterceptedChannel(ChannelInterface* channel, size_t pos)
       : channel_(channel), interceptor_pos_(pos) {}
 
-  Call CreateCall(const RpcMethod& method, ClientContext* context,
-                  CompletionQueue* cq) override {
+  Call CreateCall(const RpcMethod& method, ::grpc_impl::ClientContext* context,
+                  ::grpc_impl::CompletionQueue* cq) override {
     return channel_->CreateCallInternal(method, context, cq, interceptor_pos_);
   }
 
@@ -58,7 +62,8 @@ class InterceptedChannel : public ChannelInterface {
   }
 
   void NotifyOnStateChangeImpl(grpc_connectivity_state last_observed,
-                               gpr_timespec deadline, CompletionQueue* cq,
+                               gpr_timespec deadline,
+                               ::grpc_impl::CompletionQueue* cq,
                                void* tag) override {
     return channel_->NotifyOnStateChangeImpl(last_observed, deadline, cq, tag);
   }
@@ -67,10 +72,12 @@ class InterceptedChannel : public ChannelInterface {
     return channel_->WaitForStateChangeImpl(last_observed, deadline);
   }
 
-  CompletionQueue* CallbackCQ() override { return channel_->CallbackCQ(); }
+  ::grpc_impl::CompletionQueue* CallbackCQ() override {
+    return channel_->CallbackCQ();
+  }
 
   ChannelInterface* channel_;
-  int interceptor_pos_;
+  size_t interceptor_pos_;
 
   friend class InterceptorBatchMethodsImpl;
 };

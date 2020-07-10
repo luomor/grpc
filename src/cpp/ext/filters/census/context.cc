@@ -18,33 +18,56 @@
 
 #include <grpc/support/port_platform.h>
 
+#include "opencensus/tags/context_util.h"
+#include "opencensus/trace/context_util.h"
 #include "src/cpp/ext/filters/census/context.h"
 
 namespace grpc {
 
+using ::opencensus::tags::TagMap;
 using ::opencensus::trace::Span;
 using ::opencensus::trace::SpanContext;
 
 void GenerateServerContext(absl::string_view tracing, absl::string_view stats,
                            absl::string_view primary_role,
                            absl::string_view method, CensusContext* context) {
+  // Destruct the current CensusContext to free the Span memory before
+  // overwriting it below.
+  context->~CensusContext();
   GrpcTraceContext trace_ctxt;
-  TraceContextEncoding::Decode(tracing, &trace_ctxt);
-  SpanContext parent_ctx = trace_ctxt.ToSpanContext();
-  new (context) CensusContext(method, parent_ctx);
+  if (TraceContextEncoding::Decode(tracing, &trace_ctxt) !=
+      TraceContextEncoding::kEncodeDecodeFailure) {
+    SpanContext parent_ctx = trace_ctxt.ToSpanContext();
+    if (parent_ctx.IsValid()) {
+      new (context) CensusContext(method, parent_ctx);
+      return;
+    }
+  }
+  new (context) CensusContext(method, TagMap{});
 }
 
 void GenerateClientContext(absl::string_view method, CensusContext* ctxt,
                            CensusContext* parent_ctxt) {
+  // Destruct the current CensusContext to free the Span memory before
+  // overwriting it below.
+  ctxt->~CensusContext();
   if (parent_ctxt != nullptr) {
     SpanContext span_ctxt = parent_ctxt->Context();
     Span span = parent_ctxt->Span();
     if (span_ctxt.IsValid()) {
-      new (ctxt) CensusContext(method, &span);
+      new (ctxt) CensusContext(method, &span, TagMap{});
       return;
     }
   }
-  new (ctxt) CensusContext(method);
+  const Span& span = opencensus::trace::GetCurrentSpan();
+  const TagMap& tags = opencensus::tags::GetCurrentTagMap();
+  if (span.context().IsValid()) {
+    // Create span with parent.
+    new (ctxt) CensusContext(method, &span, tags);
+    return;
+  }
+  // Create span without parent.
+  new (ctxt) CensusContext(method, tags);
 }
 
 size_t TraceContextSerialize(const ::opencensus::trace::SpanContext& context,

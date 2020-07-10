@@ -29,17 +29,42 @@ namespace {
 
 class Foo : public RefCounted<Foo> {
  public:
-  Foo() {}
+  Foo() {
+    static_assert(std::has_virtual_destructor<Foo>::value,
+                  "PolymorphicRefCount doesn't have a virtual dtor");
+  }
 };
 
 TEST(RefCounted, Basic) {
-  Foo* foo = New<Foo>();
+  Foo* foo = new Foo();
   foo->Unref();
 }
 
 TEST(RefCounted, ExtraRef) {
-  Foo* foo = New<Foo>();
+  Foo* foo = new Foo();
   RefCountedPtr<Foo> foop = foo->Ref();
+  foop.release();
+  foo->Unref();
+  foo->Unref();
+}
+
+class FooNonPolymorphic
+    : public RefCounted<FooNonPolymorphic, NonPolymorphicRefCount> {
+ public:
+  FooNonPolymorphic() {
+    static_assert(!std::has_virtual_destructor<FooNonPolymorphic>::value,
+                  "NonPolymorphicRefCount has a virtual dtor");
+  }
+};
+
+TEST(RefCountedNonPolymorphic, Basic) {
+  FooNonPolymorphic* foo = new FooNonPolymorphic();
+  foo->Unref();
+}
+
+TEST(RefCountedNonPolymorphic, ExtraRef) {
+  FooNonPolymorphic* foo = new FooNonPolymorphic();
+  RefCountedPtr<FooNonPolymorphic> foop = foo->Ref();
   foop.release();
   foo->Unref();
   foo->Unref();
@@ -49,14 +74,33 @@ TEST(RefCounted, ExtraRef) {
 // things build properly in both debug and non-debug cases.
 DebugOnlyTraceFlag foo_tracer(true, "foo");
 
-class FooWithTracing : public RefCountedWithTracing<FooWithTracing> {
+class FooWithTracing : public RefCounted<FooWithTracing> {
  public:
-  FooWithTracing() : RefCountedWithTracing(&foo_tracer) {}
+  FooWithTracing() : RefCounted(&foo_tracer) {}
 };
 
 TEST(RefCountedWithTracing, Basic) {
-  FooWithTracing* foo = New<FooWithTracing>();
+  FooWithTracing* foo = new FooWithTracing();
   RefCountedPtr<FooWithTracing> foop = foo->Ref(DEBUG_LOCATION, "extra_ref");
+  foop.release();
+  foo->Unref(DEBUG_LOCATION, "extra_ref");
+  // Can use the no-argument methods, too.
+  foop = foo->Ref();
+  foop.release();
+  foo->Unref();
+  foo->Unref(DEBUG_LOCATION, "original_ref");
+}
+
+class FooNonPolymorphicWithTracing
+    : public RefCounted<FooNonPolymorphicWithTracing, NonPolymorphicRefCount> {
+ public:
+  FooNonPolymorphicWithTracing() : RefCounted(&foo_tracer) {}
+};
+
+TEST(RefCountedNonPolymorphicWithTracing, Basic) {
+  FooNonPolymorphicWithTracing* foo = new FooNonPolymorphicWithTracing();
+  RefCountedPtr<FooNonPolymorphicWithTracing> foop =
+      foo->Ref(DEBUG_LOCATION, "extra_ref");
   foop.release();
   foo->Unref(DEBUG_LOCATION, "extra_ref");
   // Can use the no-argument methods, too.
@@ -71,7 +115,7 @@ TEST(RefCountedWithTracing, Basic) {
 }  // namespace grpc_core
 
 int main(int argc, char** argv) {
-  grpc_test_init(argc, argv);
+  grpc::testing::TestEnvironment env(argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

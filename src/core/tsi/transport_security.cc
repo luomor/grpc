@@ -67,6 +67,19 @@ const char* tsi_result_to_string(tsi_result result) {
   }
 }
 
+const char* tsi_security_level_to_string(tsi_security_level security_level) {
+  switch (security_level) {
+    case TSI_SECURITY_NONE:
+      return "TSI_SECURITY_NONE";
+    case TSI_INTEGRITY_ONLY:
+      return "TSI_INTEGRITY_ONLY";
+    case TSI_PRIVACY_AND_INTEGRITY:
+      return "TSI_PRIVACY_AND_INTEGRITY";
+    default:
+      return "UNKNOWN";
+  }
+}
+
 /* --- tsi_frame_protector common implementation. ---
 
    Calls specific implementation after state/input validation. */
@@ -213,10 +226,10 @@ tsi_result tsi_handshaker_next(
 
 void tsi_handshaker_shutdown(tsi_handshaker* self) {
   if (self == nullptr || self->vtable == nullptr) return;
-  self->handshake_shutdown = true;
   if (self->vtable->shutdown != nullptr) {
     self->vtable->shutdown(self);
   }
+  self->handshake_shutdown = true;
 }
 
 void tsi_handshaker_destroy(tsi_handshaker* self) {

@@ -50,6 +50,11 @@ static void validate_handshaker_peers(tsi_handshaker_result* result) {
   GPR_ASSERT(property != nullptr);
   GPR_ASSERT(memcmp(property->value.data, TSI_FAKE_CERTIFICATE_TYPE,
                     property->value.length) == 0);
+  property =
+      tsi_peer_get_property_by_name(&peer, TSI_SECURITY_LEVEL_PEER_PROPERTY);
+  GPR_ASSERT(property != nullptr);
+  GPR_ASSERT(memcmp(property->value.data, TSI_FAKE_SECURITY_LEVEL,
+                    property->value.length) == 0);
   tsi_peer_destruct(&peer);
 }
 
@@ -58,7 +63,7 @@ static void fake_test_check_handshaker_peers(tsi_test_fixture* fixture) {
   validate_handshaker_peers(fixture->server_result);
 }
 
-static void fake_test_destruct(tsi_test_fixture* fixture) {}
+static void fake_test_destruct(tsi_test_fixture* /*fixture*/) {}
 
 static const struct tsi_test_fixture_vtable vtable = {
     fake_test_setup_handshakers, fake_test_check_handshaker_peers,
@@ -139,7 +144,7 @@ void fake_tsi_test_do_round_trip_odd_buffer_size() {
 }
 
 int main(int argc, char** argv) {
-  grpc_test_init(argc, argv);
+  grpc::testing::TestEnvironment env(argc, argv);
   grpc_init();
   fake_tsi_test_do_handshake_tiny_handshake_buffer();
   fake_tsi_test_do_handshake_small_handshake_buffer();

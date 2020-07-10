@@ -41,16 +41,14 @@
 
 #define GRPC_MAX_SOCKADDR_SIZE 128
 
-typedef struct {
+struct grpc_resolved_address {
   char addr[GRPC_MAX_SOCKADDR_SIZE];
   socklen_t len;
-} grpc_resolved_address;
-
-typedef struct {
+};
+struct grpc_resolved_addresses {
   size_t naddrs;
   grpc_resolved_address* addrs;
-} grpc_resolved_addresses;
-
+};
 typedef struct grpc_address_resolver_vtable {
   void (*resolve_address)(const char* addr, const char* default_port,
                           grpc_pollset_set* interested_parties,
@@ -65,7 +63,7 @@ void grpc_set_resolver_impl(grpc_address_resolver_vtable* vtable);
 
 /* Asynchronously resolve addr. Use default_port if a port isn't designated
    in addr, otherwise use the port in addr. */
-/* TODO(ctiller): add a timeout here */
+/* TODO(apolcyn): add a timeout here */
 void grpc_resolve_address(const char* addr, const char* default_port,
                           grpc_pollset_set* interested_parties,
                           grpc_closure* on_done,

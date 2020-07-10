@@ -26,12 +26,13 @@ import sys
 import threading
 import time
 import unittest
+import logging
 
 from tests.unit import _exit_scenarios
 
 SCENARIO_FILE = os.path.abspath(
-    os.path.join(
-        os.path.dirname(os.path.realpath(__file__)), '_exit_scenarios.py'))
+    os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                 '_exit_scenarios.py'))
 INTERPRETER = sys.executable
 BASE_COMMAND = [INTERPRETER, SCENARIO_FILE]
 BASE_SIGTERM_COMMAND = BASE_COMMAND + ['--wait_for_interrupt']
@@ -70,34 +71,33 @@ def wait(process):
     process.wait()
 
 
-@unittest.skip('https://github.com/grpc/grpc/issues/7311')
 class ExitTest(unittest.TestCase):
 
     def test_unstarted_server(self):
-        process = subprocess.Popen(
-            BASE_COMMAND + [_exit_scenarios.UNSTARTED_SERVER],
-            stdout=sys.stdout,
-            stderr=sys.stderr)
+        process = subprocess.Popen(BASE_COMMAND +
+                                   [_exit_scenarios.UNSTARTED_SERVER],
+                                   stdout=sys.stdout,
+                                   stderr=sys.stderr)
         wait(process)
 
     def test_unstarted_server_terminate(self):
-        process = subprocess.Popen(
-            BASE_SIGTERM_COMMAND + [_exit_scenarios.UNSTARTED_SERVER],
-            stdout=sys.stdout)
+        process = subprocess.Popen(BASE_SIGTERM_COMMAND +
+                                   [_exit_scenarios.UNSTARTED_SERVER],
+                                   stdout=sys.stdout)
         interrupt_and_wait(process)
 
     def test_running_server(self):
-        process = subprocess.Popen(
-            BASE_COMMAND + [_exit_scenarios.RUNNING_SERVER],
-            stdout=sys.stdout,
-            stderr=sys.stderr)
+        process = subprocess.Popen(BASE_COMMAND +
+                                   [_exit_scenarios.RUNNING_SERVER],
+                                   stdout=sys.stdout,
+                                   stderr=sys.stderr)
         wait(process)
 
     def test_running_server_terminate(self):
-        process = subprocess.Popen(
-            BASE_SIGTERM_COMMAND + [_exit_scenarios.RUNNING_SERVER],
-            stdout=sys.stdout,
-            stderr=sys.stderr)
+        process = subprocess.Popen(BASE_SIGTERM_COMMAND +
+                                   [_exit_scenarios.RUNNING_SERVER],
+                                   stdout=sys.stdout,
+                                   stderr=sys.stderr)
         interrupt_and_wait(process)
 
     def test_poll_connectivity_no_server(self):
@@ -116,27 +116,31 @@ class ExitTest(unittest.TestCase):
         interrupt_and_wait(process)
 
     def test_poll_connectivity(self):
-        process = subprocess.Popen(
-            BASE_COMMAND + [_exit_scenarios.POLL_CONNECTIVITY],
-            stdout=sys.stdout,
-            stderr=sys.stderr)
+        process = subprocess.Popen(BASE_COMMAND +
+                                   [_exit_scenarios.POLL_CONNECTIVITY],
+                                   stdout=sys.stdout,
+                                   stderr=sys.stderr)
         wait(process)
 
     def test_poll_connectivity_terminate(self):
-        process = subprocess.Popen(
-            BASE_SIGTERM_COMMAND + [_exit_scenarios.POLL_CONNECTIVITY],
-            stdout=sys.stdout,
-            stderr=sys.stderr)
+        process = subprocess.Popen(BASE_SIGTERM_COMMAND +
+                                   [_exit_scenarios.POLL_CONNECTIVITY],
+                                   stdout=sys.stdout,
+                                   stderr=sys.stderr)
         interrupt_and_wait(process)
 
+    @unittest.skipIf(os.name == 'nt',
+                     'os.kill does not have required permission on Windows')
     def test_in_flight_unary_unary_call(self):
-        process = subprocess.Popen(
-            BASE_COMMAND + [_exit_scenarios.IN_FLIGHT_UNARY_UNARY_CALL],
-            stdout=sys.stdout,
-            stderr=sys.stderr)
+        process = subprocess.Popen(BASE_COMMAND +
+                                   [_exit_scenarios.IN_FLIGHT_UNARY_UNARY_CALL],
+                                   stdout=sys.stdout,
+                                   stderr=sys.stderr)
         interrupt_and_wait(process)
 
     @unittest.skipIf(six.PY2, 'https://github.com/grpc/grpc/issues/6999')
+    @unittest.skipIf(os.name == 'nt',
+                     'os.kill does not have required permission on Windows')
     def test_in_flight_unary_stream_call(self):
         process = subprocess.Popen(
             BASE_COMMAND + [_exit_scenarios.IN_FLIGHT_UNARY_STREAM_CALL],
@@ -144,6 +148,8 @@ class ExitTest(unittest.TestCase):
             stderr=sys.stderr)
         interrupt_and_wait(process)
 
+    @unittest.skipIf(os.name == 'nt',
+                     'os.kill does not have required permission on Windows')
     def test_in_flight_stream_unary_call(self):
         process = subprocess.Popen(
             BASE_COMMAND + [_exit_scenarios.IN_FLIGHT_STREAM_UNARY_CALL],
@@ -152,6 +158,8 @@ class ExitTest(unittest.TestCase):
         interrupt_and_wait(process)
 
     @unittest.skipIf(six.PY2, 'https://github.com/grpc/grpc/issues/6999')
+    @unittest.skipIf(os.name == 'nt',
+                     'os.kill does not have required permission on Windows')
     def test_in_flight_stream_stream_call(self):
         process = subprocess.Popen(
             BASE_COMMAND + [_exit_scenarios.IN_FLIGHT_STREAM_STREAM_CALL],
@@ -160,6 +168,8 @@ class ExitTest(unittest.TestCase):
         interrupt_and_wait(process)
 
     @unittest.skipIf(six.PY2, 'https://github.com/grpc/grpc/issues/6999')
+    @unittest.skipIf(os.name == 'nt',
+                     'os.kill does not have required permission on Windows')
     def test_in_flight_partial_unary_stream_call(self):
         process = subprocess.Popen(
             BASE_COMMAND +
@@ -168,6 +178,8 @@ class ExitTest(unittest.TestCase):
             stderr=sys.stderr)
         interrupt_and_wait(process)
 
+    @unittest.skipIf(os.name == 'nt',
+                     'os.kill does not have required permission on Windows')
     def test_in_flight_partial_stream_unary_call(self):
         process = subprocess.Popen(
             BASE_COMMAND +
@@ -177,6 +189,8 @@ class ExitTest(unittest.TestCase):
         interrupt_and_wait(process)
 
     @unittest.skipIf(six.PY2, 'https://github.com/grpc/grpc/issues/6999')
+    @unittest.skipIf(os.name == 'nt',
+                     'os.kill does not have required permission on Windows')
     def test_in_flight_partial_stream_stream_call(self):
         process = subprocess.Popen(
             BASE_COMMAND +
@@ -187,4 +201,5 @@ class ExitTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    logging.basicConfig()
     unittest.main(verbosity=2)

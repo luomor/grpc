@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM alpine:3.3
+FROM alpine:3.9
 
 # Install Git and basic packages.
 RUN apk update && apk add \
@@ -37,18 +37,12 @@ RUN apk update && apk add \
   zip
 
 # Install Python packages from PyPI
-RUN pip install --upgrade pip==10.0.1
+RUN pip install --upgrade pip==19.3.1
 RUN pip install virtualenv
 RUN pip install futures==2.2.0 enum34==1.0.4 protobuf==3.5.0.post1 six==1.10.0
 
 # Google Cloud platform API libraries
-RUN pip install --upgrade google-api-python-client
-
-# Prepare ccache
-RUN ln -s /usr/bin/ccache /usr/local/bin/gcc
-RUN ln -s /usr/bin/ccache /usr/local/bin/g++
-RUN ln -s /usr/bin/ccache /usr/local/bin/cc
-RUN ln -s /usr/bin/ccache /usr/local/bin/c++
+RUN pip install --upgrade google-api-python-client oauth2client
 
 RUN mkdir -p /var/local/jenkins
 

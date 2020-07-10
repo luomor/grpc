@@ -39,7 +39,7 @@ class WorkerServer(worker_service_pb2_grpc.WorkerServiceServicer):
         self._quit_event = threading.Event()
 
     def RunServer(self, request_iterator, context):
-        config = next(request_iterator).setup
+        config = next(request_iterator).setup  #pylint: disable=stop-iteration-return
         server, port = self._create_server(config)
         cores = multiprocessing.cpu_count()
         server.start()
@@ -57,10 +57,9 @@ class WorkerServer(worker_service_pb2_grpc.WorkerServiceServicer):
     def _get_server_status(self, start_time, end_time, port, cores):
         end_time = time.time()
         elapsed_time = end_time - start_time
-        stats = stats_pb2.ServerStats(
-            time_elapsed=elapsed_time,
-            time_user=elapsed_time,
-            time_system=elapsed_time)
+        stats = stats_pb2.ServerStats(time_elapsed=elapsed_time,
+                                      time_user=elapsed_time,
+                                      time_system=elapsed_time)
         return control_pb2.ServerStatus(stats=stats, port=port, cores=cores)
 
     def _create_server(self, config):
@@ -80,9 +79,10 @@ class WorkerServer(worker_service_pb2_grpc.WorkerServiceServicer):
             servicer = benchmark_server.GenericBenchmarkServer(resp_size)
             method_implementations = {
                 'StreamingCall':
-                grpc.stream_stream_rpc_method_handler(servicer.StreamingCall),
+                    grpc.stream_stream_rpc_method_handler(servicer.StreamingCall
+                                                         ),
                 'UnaryCall':
-                grpc.unary_unary_rpc_method_handler(servicer.UnaryCall),
+                    grpc.unary_unary_rpc_method_handler(servicer.UnaryCall),
             }
             handler = grpc.method_handlers_generic_handler(
                 'grpc.testing.BenchmarkService', method_implementations)
@@ -102,14 +102,14 @@ class WorkerServer(worker_service_pb2_grpc.WorkerServiceServicer):
         return (server, port)
 
     def RunClient(self, request_iterator, context):
-        config = next(request_iterator).setup
+        config = next(request_iterator).setup  #pylint: disable=stop-iteration-return
         client_runners = []
         qps_data = histogram.Histogram(config.histogram_params.resolution,
                                        config.histogram_params.max_possible)
         start_time = time.time()
 
         # Create a client for each channel
-        for i in xrange(config.client_channels):
+        for i in range(config.client_channels):
             server = config.server_targets[i % len(config.server_targets)]
             runner = self._create_client_runner(server, config, qps_data)
             client_runners.append(runner)
@@ -135,11 +135,10 @@ class WorkerServer(worker_service_pb2_grpc.WorkerServiceServicer):
         latencies = qps_data.get_data()
         end_time = time.time()
         elapsed_time = end_time - start_time
-        stats = stats_pb2.ClientStats(
-            latencies=latencies,
-            time_elapsed=elapsed_time,
-            time_user=elapsed_time,
-            time_system=elapsed_time)
+        stats = stats_pb2.ClientStats(latencies=latencies,
+                                      time_elapsed=elapsed_time,
+                                      time_user=elapsed_time,
+                                      time_system=elapsed_time)
         return control_pb2.ClientStatus(stats=stats)
 
     def _create_client_runner(self, server, config, qps_data):

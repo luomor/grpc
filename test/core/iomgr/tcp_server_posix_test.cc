@@ -19,7 +19,7 @@
 #include "src/core/lib/iomgr/port.h"
 
 // This test won't work except with posix sockets enabled
-#ifdef GRPC_POSIX_SOCKET
+#ifdef GRPC_POSIX_SOCKET_TCP_SERVER
 
 #include "src/core/lib/iomgr/tcp_server.h"
 
@@ -31,6 +31,8 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#include <string>
 
 #include <grpc/grpc.h>
 #include <grpc/support/alloc.h>
@@ -110,7 +112,7 @@ static void on_connect_result_set(on_connect_result* result,
       result->server, acceptor->port_index, acceptor->fd_index);
 }
 
-static void server_weak_ref_shutdown(void* arg, grpc_error* error) {
+static void server_weak_ref_shutdown(void* arg, grpc_error* /*error*/) {
   server_weak_ref* weak_ref = static_cast<server_weak_ref*>(arg);
   weak_ref->server = nullptr;
 }
@@ -133,18 +135,14 @@ static void server_weak_ref_set(server_weak_ref* weak_ref,
 }
 
 static void test_addr_init_str(test_addr* addr) {
-  char* str = nullptr;
-  if (grpc_sockaddr_to_string(&str, &addr->addr, 0) != -1) {
-    size_t str_len;
-    memcpy(addr->str, str, (str_len = strnlen(str, sizeof(addr->str) - 1)));
-    addr->str[str_len] = '\0';
-    gpr_free(str);
-  } else {
-    addr->str[0] = '\0';
-  }
+  std::string str = grpc_sockaddr_to_string(&addr->addr, false);
+  size_t str_len = std::min(str.size(), sizeof(addr->str) - 1);
+  memcpy(addr->str, str.c_str(), str_len);
+  addr->str[str_len] = '\0';
 }
 
-static void on_connect(void* arg, grpc_endpoint* tcp, grpc_pollset* pollset,
+static void on_connect(void* /*arg*/, grpc_endpoint* tcp,
+                       grpc_pollset* /*pollset*/,
                        grpc_tcp_server_acceptor* acceptor) {
   grpc_endpoint_shutdown(tcp,
                          GRPC_ERROR_CREATE_FROM_STATIC_STRING("Connected"));
@@ -421,7 +419,7 @@ static void test_connect(size_t num_connects,
   GPR_ASSERT(weak_ref.server == nullptr);
 }
 
-static void destroy_pollset(void* p, grpc_error* error) {
+static void destroy_pollset(void* p, grpc_error* /*error*/) {
   grpc_pollset_destroy(static_cast<grpc_pollset*>(p));
 }
 
@@ -437,8 +435,13 @@ int main(int argc, char** argv) {
   // Zalloc dst_addrs to avoid oversized frames.
   test_addrs* dst_addrs =
       static_cast<test_addrs*>(gpr_zalloc(sizeof(*dst_addrs)));
-  grpc_test_init(argc, argv);
+  grpc::testing::TestEnvironment env(argc, argv);
   grpc_init();
+  // wait a few seconds to make sure IPv6 link-local addresses can be bound
+  // if we are running under docker container that has just started.
+  // See https://github.com/moby/moby/issues/38491
+  // See https://github.com/grpc/grpc/issues/15610
+  gpr_sleep_until(grpc_timeout_seconds_to_deadline(4));
   {
     grpc_core::ExecCtx exec_ctx;
     g_pollset = static_cast<grpc_pollset*>(gpr_zalloc(grpc_pollset_size()));
@@ -500,8 +503,8 @@ int main(int argc, char** argv) {
   return EXIT_SUCCESS;
 }
 
-#else /* GRPC_POSIX_SOCKET */
+#else /* GRPC_POSIX_SOCKET_SERVER */
 
 int main(int argc, char** argv) { return 1; }
 
-#endif /* GRPC_POSIX_SOCKET */
+#endif /* GRPC_POSIX_SOCKET_SERVER */

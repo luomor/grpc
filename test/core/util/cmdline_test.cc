@@ -307,7 +307,6 @@ static void test_extra_dashdash(void) {
 
 static void test_usage(void) {
   gpr_cmdline* cl;
-  char* usage;
 
   const char* str = nullptr;
   int x = 0;
@@ -322,17 +321,15 @@ static void test_usage(void) {
   gpr_cmdline_on_extra_arg(cl, "file", "filenames to process", extra_arg_cb,
                            nullptr);
 
-  usage = gpr_cmdline_usage_string(cl, "test");
-  GPR_ASSERT(0 == strcmp(usage,
-                         "Usage: test [--str=string] [--x=int] "
-                         "[--flag|--no-flag] [file...]\n"));
-  gpr_free(usage);
+  std::string usage = gpr_cmdline_usage_string(cl, "test");
+  GPR_ASSERT(usage ==
+             "Usage: test [--str=string] [--x=int] "
+             "[--flag|--no-flag] [file...]\n");
 
   usage = gpr_cmdline_usage_string(cl, "/foo/test");
-  GPR_ASSERT(0 == strcmp(usage,
-                         "Usage: test [--str=string] [--x=int] "
-                         "[--flag|--no-flag] [file...]\n"));
-  gpr_free(usage);
+  GPR_ASSERT(usage ==
+             "Usage: test [--str=string] [--x=int] "
+             "[--flag|--no-flag] [file...]\n");
 
   gpr_cmdline_destroy(cl);
 }
@@ -463,7 +460,7 @@ static void test_badargs4(void) {
 }
 
 int main(int argc, char** argv) {
-  grpc_test_init(argc, argv);
+  grpc::testing::TestEnvironment env(argc, argv);
   test_simple_int();
   test_eq_int();
   test_2dash_int();

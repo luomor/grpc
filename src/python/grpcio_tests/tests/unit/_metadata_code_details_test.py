@@ -15,6 +15,7 @@
 
 import threading
 import unittest
+import logging
 
 import grpc
 
@@ -170,19 +171,19 @@ class _Servicer(object):
 def _generic_handler(servicer):
     method_handlers = {
         _UNARY_UNARY:
-        grpc.unary_unary_rpc_method_handler(
-            servicer.unary_unary,
-            request_deserializer=_REQUEST_DESERIALIZER,
-            response_serializer=_RESPONSE_SERIALIZER),
+            grpc.unary_unary_rpc_method_handler(
+                servicer.unary_unary,
+                request_deserializer=_REQUEST_DESERIALIZER,
+                response_serializer=_RESPONSE_SERIALIZER),
         _UNARY_STREAM:
-        grpc.unary_stream_rpc_method_handler(servicer.unary_stream),
+            grpc.unary_stream_rpc_method_handler(servicer.unary_stream),
         _STREAM_UNARY:
-        grpc.stream_unary_rpc_method_handler(servicer.stream_unary),
+            grpc.stream_unary_rpc_method_handler(servicer.stream_unary),
         _STREAM_STREAM:
-        grpc.stream_stream_rpc_method_handler(
-            servicer.stream_stream,
-            request_deserializer=_REQUEST_DESERIALIZER,
-            response_serializer=_RESPONSE_SERIALIZER),
+            grpc.stream_stream_rpc_method_handler(
+                servicer.stream_stream,
+                request_deserializer=_REQUEST_DESERIALIZER,
+                response_serializer=_RESPONSE_SERIALIZER),
     }
     return grpc.method_handlers_generic_handler(_SERVICE, method_handlers)
 
@@ -197,8 +198,8 @@ class MetadataCodeDetailsTest(unittest.TestCase):
         port = self._server.add_insecure_port('[::]:0')
         self._server.start()
 
-        channel = grpc.insecure_channel('localhost:{}'.format(port))
-        self._unary_unary = channel.unary_unary(
+        self._channel = grpc.insecure_channel('localhost:{}'.format(port))
+        self._unary_unary = self._channel.unary_unary(
             '/'.join((
                 '',
                 _SERVICE,
@@ -207,17 +208,19 @@ class MetadataCodeDetailsTest(unittest.TestCase):
             request_serializer=_REQUEST_SERIALIZER,
             response_deserializer=_RESPONSE_DESERIALIZER,
         )
-        self._unary_stream = channel.unary_stream('/'.join((
-            '',
-            _SERVICE,
-            _UNARY_STREAM,
-        )),)
-        self._stream_unary = channel.stream_unary('/'.join((
-            '',
-            _SERVICE,
-            _STREAM_UNARY,
-        )),)
-        self._stream_stream = channel.stream_stream(
+        self._unary_stream = self._channel.unary_stream(
+            '/'.join((
+                '',
+                _SERVICE,
+                _UNARY_STREAM,
+            )),)
+        self._stream_unary = self._channel.stream_unary(
+            '/'.join((
+                '',
+                _SERVICE,
+                _STREAM_UNARY,
+            )),)
+        self._stream_stream = self._channel.stream_stream(
             '/'.join((
                 '',
                 _SERVICE,
@@ -226,6 +229,10 @@ class MetadataCodeDetailsTest(unittest.TestCase):
             request_serializer=_REQUEST_SERIALIZER,
             response_deserializer=_RESPONSE_DESERIALIZER,
         )
+
+    def tearDown(self):
+        self._server.stop(None)
+        self._channel.close()
 
     def testSuccessfulUnaryUnary(self):
         self._servicer.set_details(_DETAILS)
@@ -243,13 +250,12 @@ class MetadataCodeDetailsTest(unittest.TestCase):
             test_common.metadata_transmitted(_SERVER_TRAILING_METADATA,
                                              call.trailing_metadata()))
         self.assertIs(grpc.StatusCode.OK, call.code())
-        self.assertEqual(_DETAILS, call.details())
 
     def testSuccessfulUnaryStream(self):
         self._servicer.set_details(_DETAILS)
 
-        response_iterator_call = self._unary_stream(
-            _SERIALIZED_REQUEST, metadata=_CLIENT_METADATA)
+        response_iterator_call = self._unary_stream(_SERIALIZED_REQUEST,
+                                                    metadata=_CLIENT_METADATA)
         received_initial_metadata = response_iterator_call.initial_metadata()
         list(response_iterator_call)
 
@@ -264,7 +270,6 @@ class MetadataCodeDetailsTest(unittest.TestCase):
                 _SERVER_TRAILING_METADATA,
                 response_iterator_call.trailing_metadata()))
         self.assertIs(grpc.StatusCode.OK, response_iterator_call.code())
-        self.assertEqual(_DETAILS, response_iterator_call.details())
 
     def testSuccessfulStreamUnary(self):
         self._servicer.set_details(_DETAILS)
@@ -283,14 +288,13 @@ class MetadataCodeDetailsTest(unittest.TestCase):
             test_common.metadata_transmitted(_SERVER_TRAILING_METADATA,
                                              call.trailing_metadata()))
         self.assertIs(grpc.StatusCode.OK, call.code())
-        self.assertEqual(_DETAILS, call.details())
 
     def testSuccessfulStreamStream(self):
         self._servicer.set_details(_DETAILS)
 
-        response_iterator_call = self._stream_stream(
-            iter([object()] * test_constants.STREAM_LENGTH),
-            metadata=_CLIENT_METADATA)
+        response_iterator_call = self._stream_stream(iter(
+            [object()] * test_constants.STREAM_LENGTH),
+                                                     metadata=_CLIENT_METADATA)
         received_initial_metadata = response_iterator_call.initial_metadata()
         list(response_iterator_call)
 
@@ -305,7 +309,6 @@ class MetadataCodeDetailsTest(unittest.TestCase):
                 _SERVER_TRAILING_METADATA,
                 response_iterator_call.trailing_metadata()))
         self.assertIs(grpc.StatusCode.OK, response_iterator_call.code())
-        self.assertEqual(_DETAILS, response_iterator_call.details())
 
     def testAbortedUnaryUnary(self):
         test_cases = zip(_ABORT_CODES, _EXPECTED_CLIENT_CODES,
@@ -372,9 +375,9 @@ class MetadataCodeDetailsTest(unittest.TestCase):
             self._servicer.set_abort_call()
 
             with self.assertRaises(grpc.RpcError) as exception_context:
-                self._stream_unary.with_call(
-                    iter([_SERIALIZED_REQUEST] * test_constants.STREAM_LENGTH),
-                    metadata=_CLIENT_METADATA)
+                self._stream_unary.with_call(iter([_SERIALIZED_REQUEST] *
+                                                  test_constants.STREAM_LENGTH),
+                                             metadata=_CLIENT_METADATA)
 
             self.assertTrue(
                 test_common.metadata_transmitted(
@@ -447,8 +450,8 @@ class MetadataCodeDetailsTest(unittest.TestCase):
         self._servicer.set_code(_NON_OK_CODE)
         self._servicer.set_details(_DETAILS)
 
-        response_iterator_call = self._unary_stream(
-            _SERIALIZED_REQUEST, metadata=_CLIENT_METADATA)
+        response_iterator_call = self._unary_stream(_SERIALIZED_REQUEST,
+                                                    metadata=_CLIENT_METADATA)
         received_initial_metadata = response_iterator_call.initial_metadata()
         with self.assertRaises(grpc.RpcError):
             list(response_iterator_call)
@@ -471,9 +474,9 @@ class MetadataCodeDetailsTest(unittest.TestCase):
         self._servicer.set_details(_DETAILS)
 
         with self.assertRaises(grpc.RpcError) as exception_context:
-            self._stream_unary.with_call(
-                iter([_SERIALIZED_REQUEST] * test_constants.STREAM_LENGTH),
-                metadata=_CLIENT_METADATA)
+            self._stream_unary.with_call(iter([_SERIALIZED_REQUEST] *
+                                              test_constants.STREAM_LENGTH),
+                                         metadata=_CLIENT_METADATA)
 
         self.assertTrue(
             test_common.metadata_transmitted(
@@ -493,9 +496,9 @@ class MetadataCodeDetailsTest(unittest.TestCase):
         self._servicer.set_code(_NON_OK_CODE)
         self._servicer.set_details(_DETAILS)
 
-        response_iterator_call = self._stream_stream(
-            iter([object()] * test_constants.STREAM_LENGTH),
-            metadata=_CLIENT_METADATA)
+        response_iterator_call = self._stream_stream(iter(
+            [object()] * test_constants.STREAM_LENGTH),
+                                                     metadata=_CLIENT_METADATA)
         received_initial_metadata = response_iterator_call.initial_metadata()
         with self.assertRaises(grpc.RpcError) as exception_context:
             list(response_iterator_call)
@@ -540,8 +543,8 @@ class MetadataCodeDetailsTest(unittest.TestCase):
         self._servicer.set_details(_DETAILS)
         self._servicer.set_exception()
 
-        response_iterator_call = self._unary_stream(
-            _SERIALIZED_REQUEST, metadata=_CLIENT_METADATA)
+        response_iterator_call = self._unary_stream(_SERIALIZED_REQUEST,
+                                                    metadata=_CLIENT_METADATA)
         received_initial_metadata = response_iterator_call.initial_metadata()
         with self.assertRaises(grpc.RpcError):
             list(response_iterator_call)
@@ -565,9 +568,9 @@ class MetadataCodeDetailsTest(unittest.TestCase):
         self._servicer.set_exception()
 
         with self.assertRaises(grpc.RpcError) as exception_context:
-            self._stream_unary.with_call(
-                iter([_SERIALIZED_REQUEST] * test_constants.STREAM_LENGTH),
-                metadata=_CLIENT_METADATA)
+            self._stream_unary.with_call(iter([_SERIALIZED_REQUEST] *
+                                              test_constants.STREAM_LENGTH),
+                                         metadata=_CLIENT_METADATA)
 
         self.assertTrue(
             test_common.metadata_transmitted(
@@ -588,9 +591,9 @@ class MetadataCodeDetailsTest(unittest.TestCase):
         self._servicer.set_details(_DETAILS)
         self._servicer.set_exception()
 
-        response_iterator_call = self._stream_stream(
-            iter([object()] * test_constants.STREAM_LENGTH),
-            metadata=_CLIENT_METADATA)
+        response_iterator_call = self._stream_stream(iter(
+            [object()] * test_constants.STREAM_LENGTH),
+                                                     metadata=_CLIENT_METADATA)
         received_initial_metadata = response_iterator_call.initial_metadata()
         with self.assertRaises(grpc.RpcError):
             list(response_iterator_call)
@@ -636,9 +639,9 @@ class MetadataCodeDetailsTest(unittest.TestCase):
         self._servicer.set_return_none()
 
         with self.assertRaises(grpc.RpcError) as exception_context:
-            self._stream_unary.with_call(
-                iter([_SERIALIZED_REQUEST] * test_constants.STREAM_LENGTH),
-                metadata=_CLIENT_METADATA)
+            self._stream_unary.with_call(iter([_SERIALIZED_REQUEST] *
+                                              test_constants.STREAM_LENGTH),
+                                         metadata=_CLIENT_METADATA)
 
         self.assertTrue(
             test_common.metadata_transmitted(
@@ -656,4 +659,5 @@ class MetadataCodeDetailsTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    logging.basicConfig()
     unittest.main(verbosity=2)

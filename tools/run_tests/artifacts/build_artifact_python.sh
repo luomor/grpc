@@ -22,6 +22,14 @@ export PYTHON=${PYTHON:-python}
 export PIP=${PIP:-pip}
 export AUDITWHEEL=${AUDITWHEEL:-auditwheel}
 
+# Install Cython to avoid source wheel build failure.
+"${PIP}" install --upgrade cython
+
+# Allow build_ext to build C/C++ files in parallel
+# by enabling a monkeypatch. It speeds up the build a lot.
+# Use externally provided GRPC_PYTHON_BUILD_EXT_COMPILER_JOBS value if set.
+export GRPC_PYTHON_BUILD_EXT_COMPILER_JOBS=${GRPC_PYTHON_BUILD_EXT_COMPILER_JOBS:-2}
+
 mkdir -p "${ARTIFACTS_OUT}"
 ARTIFACT_DIR="$PWD/${ARTIFACTS_OUT}"
 
@@ -43,7 +51,7 @@ clean_non_source_files() {
 ( cd "$1"
   find . -type f \
     | grep -v '\.c$' | grep -v '\.cc$' | grep -v '\.cpp$' \
-    | grep -v '\.h$' | grep -v '\.hh$' \
+    | grep -v '\.h$' | grep -v '\.hh$' | grep -v '\.inc$' \
     | grep -v '\.s$' | grep -v '\.py$' \
     | while read -r file; do
       rm -f "$file" || true
@@ -74,10 +82,12 @@ ${SETARCH_CMD} "${PYTHON}" tools/distrib/python/grpcio_tools/setup.py bdist_whee
 if [ "$GRPC_BUILD_MANYLINUX_WHEEL" != "" ]
 then
   for wheel in dist/*.whl; do
+    "${AUDITWHEEL}" show "$wheel" | tee /dev/stderr |  grep -E -w "$AUDITWHEEL_PLAT"
     "${AUDITWHEEL}" repair "$wheel" -w "$ARTIFACT_DIR"
     rm "$wheel"
   done
   for wheel in tools/distrib/python/grpcio_tools/dist/*.whl; do
+    "${AUDITWHEEL}" show "$wheel" | tee /dev/stderr |  grep -E -w "$AUDITWHEEL_PLAT"
     "${AUDITWHEEL}" repair "$wheel" -w "$ARTIFACT_DIR"
     rm "$wheel"
   done
@@ -100,8 +110,14 @@ then
   "${PIP}" install grpcio-tools --no-index --find-links "file://$ARTIFACT_DIR/"
 
   # Build grpcio_testing source distribution
-  ${SETARCH_CMD} "${PYTHON}" src/python/grpcio_testing/setup.py sdist
+  ${SETARCH_CMD} "${PYTHON}" src/python/grpcio_testing/setup.py preprocess \
+      sdist
   cp -r src/python/grpcio_testing/dist/* "$ARTIFACT_DIR"
+
+  # Build grpcio_channelz source distribution
+  ${SETARCH_CMD} "${PYTHON}" src/python/grpcio_channelz/setup.py \
+      preprocess build_package_protos sdist
+  cp -r src/python/grpcio_channelz/dist/* "$ARTIFACT_DIR"
 
   # Build grpcio_health_checking source distribution
   ${SETARCH_CMD} "${PYTHON}" src/python/grpcio_health_checking/setup.py \
@@ -112,7 +128,18 @@ then
   ${SETARCH_CMD} "${PYTHON}" src/python/grpcio_reflection/setup.py \
       preprocess build_package_protos sdist
   cp -r src/python/grpcio_reflection/dist/* "$ARTIFACT_DIR"
+
+  # Build grpcio_status source distribution
+  ${SETARCH_CMD} "${PYTHON}" src/python/grpcio_status/setup.py \
+      preprocess sdist
+  cp -r src/python/grpcio_status/dist/* "$ARTIFACT_DIR"
 fi
+
+# Ensure the generated artifacts are valid.
+"${PYTHON}" -m virtualenv venv || { "${PYTHON}" -m pip install virtualenv==16.7.9 && "${PYTHON}" -m virtualenv venv; }
+venv/bin/python -m pip install "twine<=2.0"
+venv/bin/python -m twine check dist/* tools/distrib/python/grpcio_tools/dist/*
+rm -rf venv/
 
 cp -r dist/* "$ARTIFACT_DIR"
 cp -r tools/distrib/python/grpcio_tools/dist/* "$ARTIFACT_DIR"

@@ -35,11 +35,11 @@ using grpc::protobuf::ServiceDescriptor;
 using grpc::protobuf::io::Printer;
 using grpc::protobuf::io::StringOutputStream;
 using grpc_generator::GetMethodType;
+using grpc_generator::MethodType;
 using grpc_generator::METHODTYPE_BIDI_STREAMING;
 using grpc_generator::METHODTYPE_CLIENT_STREAMING;
 using grpc_generator::METHODTYPE_NO_STREAMING;
 using grpc_generator::METHODTYPE_SERVER_STREAMING;
-using grpc_generator::MethodType;
 using grpc_generator::StringReplace;
 using std::map;
 using std::vector;
@@ -54,9 +54,9 @@ namespace {
 // TODO(jtattermusch): reuse the functionality from google/protobuf.
 bool GenerateDocCommentBodyImpl(grpc::protobuf::io::Printer* printer,
                                 grpc::protobuf::SourceLocation location) {
-  grpc::string comments = location.leading_comments.empty()
-                              ? location.trailing_comments
-                              : location.leading_comments;
+  std::string comments = location.leading_comments.empty()
+                             ? location.trailing_comments
+                             : location.leading_comments;
   if (comments.empty()) {
     return false;
   }
@@ -66,7 +66,7 @@ bool GenerateDocCommentBodyImpl(grpc::protobuf::io::Printer* printer,
   comments = grpc_generator::StringReplace(comments, "&", "&amp;", true);
   comments = grpc_generator::StringReplace(comments, "<", "&lt;", true);
 
-  std::vector<grpc::string> lines;
+  std::vector<std::string> lines;
   grpc_generator::Split(comments, '\n', &lines);
   // TODO: We really should work out which part to put in the summary and which
   // to put in the remarks...
@@ -81,9 +81,9 @@ bool GenerateDocCommentBodyImpl(grpc::protobuf::io::Printer* printer,
   // Note that we can't remove leading or trailing whitespace as *that's*
   // relevant in markdown too.
   // (We don't skip "just whitespace" lines, either.)
-  for (std::vector<grpc::string>::iterator it = lines.begin();
-       it != lines.end(); ++it) {
-    grpc::string line = *it;
+  for (std::vector<std::string>::iterator it = lines.begin(); it != lines.end();
+       ++it) {
+    std::string line = *it;
     if (line.empty()) {
       last_was_empty = true;
     } else {
@@ -194,6 +194,21 @@ std::string GetCSharpMethodType(MethodType method_type) {
       return "grpc::MethodType.ServerStreaming";
     case METHODTYPE_BIDI_STREAMING:
       return "grpc::MethodType.DuplexStreaming";
+  }
+  GOOGLE_LOG(FATAL) << "Can't get here.";
+  return "";
+}
+
+std::string GetCSharpServerMethodType(MethodType method_type) {
+  switch (method_type) {
+    case METHODTYPE_NO_STREAMING:
+      return "grpc::UnaryServerMethod";
+    case METHODTYPE_CLIENT_STREAMING:
+      return "grpc::ClientStreamingServerMethod";
+    case METHODTYPE_SERVER_STREAMING:
+      return "grpc::ServerStreamingServerMethod";
+    case METHODTYPE_BIDI_STREAMING:
+      return "grpc::DuplexStreamingServerMethod";
   }
   GOOGLE_LOG(FATAL) << "Can't get here.";
   return "";
@@ -367,6 +382,10 @@ void GenerateServerClass(Printer* out, const ServiceDescriptor* service) {
       "/// <summary>Base class for server-side implementations of "
       "$servicename$</summary>\n",
       "servicename", GetServiceClassName(service));
+  out->Print(
+      "[grpc::BindServiceMethod(typeof($classname$), "
+      "\"BindService\")]\n",
+      "classname", GetServiceClassName(service));
   out->Print("public abstract partial class $name$\n", "name",
              GetServerClassName(service));
   out->Print("{\n");
@@ -409,8 +428,8 @@ void GenerateClientStub(Printer* out, const ServiceDescriptor* service) {
       "/// <param name=\"channel\">The channel to use to make remote "
       "calls.</param>\n",
       "servicename", GetServiceClassName(service));
-  out->Print("public $name$(grpc::Channel channel) : base(channel)\n", "name",
-             GetClientClassName(service));
+  out->Print("public $name$(grpc::ChannelBase channel) : base(channel)\n",
+             "name", GetClientClassName(service));
   out->Print("{\n");
   out->Print("}\n");
   out->Print(
@@ -609,6 +628,47 @@ void GenerateBindServiceMethod(Printer* out, const ServiceDescriptor* service) {
   out->Print("\n");
 }
 
+void GenerateBindServiceWithBinderMethod(Printer* out,
+                                         const ServiceDescriptor* service) {
+  out->Print(
+      "/// <summary>Register service method with a service "
+      "binder with or without implementation. Useful when customizing the  "
+      "service binding logic.\n"
+      "/// Note: this method is part of an experimental API that can change or "
+      "be "
+      "removed without any prior notice.</summary>\n");
+  out->Print(
+      "/// <param name=\"serviceBinder\">Service methods will be bound by "
+      "calling <c>AddMethod</c> on this object."
+      "</param>\n");
+  out->Print(
+      "/// <param name=\"serviceImpl\">An object implementing the server-side"
+      " handling logic.</param>\n");
+  out->Print(
+      "public static void BindService(grpc::ServiceBinderBase serviceBinder, "
+      "$implclass$ "
+      "serviceImpl)\n",
+      "implclass", GetServerClassName(service));
+  out->Print("{\n");
+  out->Indent();
+
+  for (int i = 0; i < service->method_count(); i++) {
+    const MethodDescriptor* method = service->method(i);
+    out->Print(
+        "serviceBinder.AddMethod($methodfield$, serviceImpl == null ? null : "
+        "new $servermethodtype$<$inputtype$, $outputtype$>("
+        "serviceImpl.$methodname$));\n",
+        "methodfield", GetMethodFieldName(method), "servermethodtype",
+        GetCSharpServerMethodType(GetMethodType(method)), "inputtype",
+        GetClassName(method->input_type()), "outputtype",
+        GetClassName(method->output_type()), "methodname", method->name());
+  }
+
+  out->Outdent();
+  out->Print("}\n");
+  out->Print("\n");
+}
+
 void GenerateService(Printer* out, const ServiceDescriptor* service,
                      bool generate_client, bool generate_server,
                      bool internal_access) {
@@ -637,6 +697,7 @@ void GenerateService(Printer* out, const ServiceDescriptor* service,
   }
   if (generate_server) {
     GenerateBindServiceMethod(out, service);
+    GenerateBindServiceWithBinderMethod(out, service);
   }
 
   out->Outdent();
@@ -645,9 +706,9 @@ void GenerateService(Printer* out, const ServiceDescriptor* service,
 
 }  // anonymous namespace
 
-grpc::string GetServices(const FileDescriptor* file, bool generate_client,
-                         bool generate_server, bool internal_access) {
-  grpc::string output;
+std::string GetServices(const FileDescriptor* file, bool generate_client,
+                        bool generate_server, bool internal_access) {
+  std::string output;
   {
     // Scope the output stream so it closes and finalizes output to the string.
 
@@ -668,7 +729,7 @@ grpc::string GetServices(const FileDescriptor* file, bool generate_client,
     out.Print("// </auto-generated>\n");
 
     // use C++ style as there are no file-level XML comments in .NET
-    grpc::string leading_comments = GetCsharpComments(file, true);
+    std::string leading_comments = GetCsharpComments(file, true);
     if (!leading_comments.empty()) {
       out.Print("// Original file comments:\n");
       out.PrintRaw(leading_comments.c_str());
@@ -681,7 +742,7 @@ grpc::string GetServices(const FileDescriptor* file, bool generate_client,
     out.Print("using grpc = global::Grpc.Core;\n");
     out.Print("\n");
 
-    grpc::string file_namespace = GetFileNamespace(file);
+    std::string file_namespace = GetFileNamespace(file);
     if (file_namespace != "") {
       out.Print("namespace $namespace$ {\n", "namespace", file_namespace);
       out.Indent();

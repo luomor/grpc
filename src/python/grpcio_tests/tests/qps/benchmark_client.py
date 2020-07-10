@@ -61,14 +61,16 @@ class BenchmarkClient:
             self._stub = benchmark_service_pb2_grpc.BenchmarkServiceStub(
                 channel)
             payload = messages_pb2.Payload(
-                body='\0' * config.payload_config.simple_params.req_size)
+                body=bytes(b'\0' *
+                           config.payload_config.simple_params.req_size))
             self._request = messages_pb2.SimpleRequest(
                 payload=payload,
                 response_size=config.payload_config.simple_params.resp_size)
         else:
             self._generic = True
             self._stub = GenericStub(channel)
-            self._request = '\0' * config.payload_config.bytebuf_params.req_size
+            self._request = bytes(b'\0' *
+                                  config.payload_config.bytebuf_params.req_size)
 
         self._hist = hist
         self._response_callbacks = []
@@ -102,7 +104,7 @@ class UnarySyncBenchmarkClient(BenchmarkClient):
             max_workers=config.outstanding_rpcs_per_channel)
 
     def send_request(self):
-        # Send requests in seperate threads to support multiple outstanding rpcs
+        # Send requests in separate threads to support multiple outstanding rpcs
         # (See src/proto/grpc/testing/control.proto)
         self._pool.submit(self._dispatch_request)
 
@@ -180,7 +182,7 @@ class StreamingSyncBenchmarkClient(BenchmarkClient):
         self._streams = [
             _SyncStream(self._stub, self._generic, self._request,
                         self._handle_response)
-            for _ in xrange(config.outstanding_rpcs_per_channel)
+            for _ in range(config.outstanding_rpcs_per_channel)
         ]
         self._curr_stream = 0
 

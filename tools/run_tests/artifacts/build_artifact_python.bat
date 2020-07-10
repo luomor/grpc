@@ -15,12 +15,17 @@
 @rem set path to python & mingw compiler
 set PATH=C:\%1;C:\%1\scripts;C:\msys64\mingw%2\bin;C:\tools\msys64\mingw%2\bin;%PATH%
 
-pip install --upgrade six
+python -m pip install --upgrade six
 @rem some artifacts are broken for setuptools 38.5.0. See https://github.com/grpc/grpc/issues/14317
-pip install --upgrade setuptools==38.2.4
-pip install -rrequirements.txt
+python -m pip install --upgrade setuptools==38.2.4
+python -m pip install --upgrade cython
+python -m pip install -rrequirements.txt --user
 
 set GRPC_PYTHON_BUILD_WITH_CYTHON=1
+
+@rem Allow build_ext to build C/C++ files in parallel
+@rem by enabling a monkeypatch. It speeds up the build a lot.
+set GRPC_PYTHON_BUILD_EXT_COMPILER_JOBS=2
 
 mkdir -p %ARTIFACTS_OUT%
 set ARTIFACT_DIR=%cd%\%ARTIFACTS_OUT%
@@ -41,6 +46,10 @@ python setup.py bdist_wheel || goto :error
 pushd tools\distrib\python\grpcio_tools
 python setup.py bdist_wheel || goto :error
 popd
+
+@rem Ensure the generate artifacts are valid.
+python -m pip install "twine<=2.0"
+python -m twine check dist\* tools\distrib\python\grpcio_tools\dist\* || goto :error
 
 xcopy /Y /I /S dist\* %ARTIFACT_DIR% || goto :error
 xcopy /Y /I /S tools\distrib\python\grpcio_tools\dist\* %ARTIFACT_DIR% || goto :error

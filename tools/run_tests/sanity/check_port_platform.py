@@ -35,6 +35,11 @@ def check_port_platform_inclusion(directory_root):
                 continue
             if filename.endswith('.pb.h') or filename.endswith('.pb.c'):
                 continue
+            # Skip check for upb generated code.
+            if (filename.endswith('.upb.h') or filename.endswith('.upb.c') or
+                    filename.endswith('.upbdefs.h') or
+                    filename.endswith('.upbdefs.c')):
+                continue
             with open(path) as f:
                 all_lines_in_file = f.readlines()
                 for index, l in enumerate(all_lines_in_file):

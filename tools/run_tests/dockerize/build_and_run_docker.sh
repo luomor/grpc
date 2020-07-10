@@ -16,6 +16,8 @@
 # Builds docker image and runs a command under it.
 # You should never need to call this script on your own.
 
+# shellcheck disable=SC2103
+
 set -ex
 
 cd "$(dirname "$0")/../../.."
@@ -31,7 +33,7 @@ cd -
 # $@ - Extra args to pass to docker run
 
 # Use image name based on Dockerfile location checksum
-DOCKER_IMAGE_NAME=$(basename "$DOCKERFILE_DIR")_$(sha1sum "$DOCKERFILE_DIR/Dockerfile" | cut -f1 -d\ )
+DOCKER_IMAGE_NAME=$(basename "$DOCKERFILE_DIR"):$(sha1sum "$DOCKERFILE_DIR/Dockerfile" | cut -f1 -d\ )
 
 # Pull the base image to force an update
 if [ "$DOCKER_BASE_IMAGE" != "" ]
